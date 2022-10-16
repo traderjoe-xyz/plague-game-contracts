@@ -7,6 +7,8 @@ import "src/PlagueGame.sol";
 import "./mocks/ERC721.sol";
 import "chainlink/mocks/VRFCoordinatorV2Mock.sol";
 
+error OnlyCoordinatorCanFulfill(address have, address want);
+
 contract PlagueGameTest is Test {
     // Collection configuration
     uint256 collectionSize = 1000;
@@ -19,6 +21,7 @@ contract PlagueGameTest is Test {
 
     // Test configuration
     uint256[] curedDoctorsPerEpoch = [120, 110, 100, 90, 50, 40, 30, 20, 15, 10, 5, 2];
+    uint256[] randomWords = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
     // VRF configuration
     uint64 subscriptionId;
@@ -37,7 +40,7 @@ contract PlagueGameTest is Test {
 
     uint256 lastPotionUsed;
     uint256 randomnessSeedIndex;
-    uint256[] winnersArray;
+    uint256[] doctorsArray;
 
     function setUp() public {
         villagers = new ERC721Mock();
@@ -51,45 +54,63 @@ contract PlagueGameTest is Test {
         subscriptionId = coordinator.createSubscription();
         coordinator.fundSubscription(subscriptionId, lastSubscriptionBalance);
 
-        plagueGame = new PlagueGame(
-            villagers,
-            potions,
-            infectedDoctorsPerEpoch,
-            playerNumberToEndGame,
-            epochDuration,
-            coordinator,
-            subscriptionId,
-            keyHash,
-            maxGas
-        );
+        _gameSetup();
 
         _initializeGame();
-
-        coordinator.addConsumer(subscriptionId, address(plagueGame));
-        (bool success,) = payable(plagueGame).call{value: prizePot}("");
-        assert(success);
     }
 
     function testVRFSafeGuards() public {
         plagueGame.startGame();
+
+        vm.expectRevert(abi.encodeWithSelector(OnlyCoordinatorCanFulfill.selector, address(this), address(coordinator)));
+        plagueGame.rawFulfillRandomWords(s_nextRequestId, randomWords);
+
         _mockVRFResponse();
 
-        vm.expectRevert();
-        _mockVRFResponse();
-        --s_nextRequestId;
+        vm.prank(address(coordinator));
+        vm.expectRevert(VRFRequestAlreadyAsked.selector);
+        plagueGame.rawFulfillRandomWords(s_nextRequestId - 1, randomWords);
 
         plagueGame.startEpoch();
-        vm.expectRevert();
-        _mockVRFResponse();
-        --s_nextRequestId;
+
+        vm.prank(address(coordinator));
+        vm.expectRevert(InvalidRequestId.selector);
+        plagueGame.rawFulfillRandomWords(s_nextRequestId - 1, randomWords);
 
         skip(epochDuration);
         plagueGame.endEpoch();
 
-        vm.expectRevert();
-        coordinator.fulfillRandomWords(s_nextRequestId - 1, address(plagueGame));
+        vm.prank(address(coordinator));
+        vm.expectRevert(InvalidRequestId.selector);
+        plagueGame.rawFulfillRandomWords(s_nextRequestId - 1, randomWords);
 
         _mockVRFResponse();
+    }
+
+    function testConfigFunctions() public {
+        _gameSetup();
+
+        vm.expectRevert(GameNotStarted.selector);
+        plagueGame.startGame();
+
+        _initializeGame();
+
+        vm.expectRevert(GameNotOver.selector);
+        plagueGame.allowPrizeWithdraw(true);
+
+        testFullGame(0);
+
+        vm.expectRevert(GameAlreadyStarted.selector);
+        plagueGame.startGame();
+
+        plagueGame.allowPrizeWithdraw(true);
+        assertEq(plagueGame.prizeWithdrawalAllowed(), true, "Withdrawals should be allowed");
+
+        vm.expectRevert(UpdateToSameStatus.selector);
+        plagueGame.allowPrizeWithdraw(true);
+
+        plagueGame.allowPrizeWithdraw(false);
+        assertEq(plagueGame.prizeWithdrawalAllowed(), false, "Withdrawals should be closed");
     }
 
     function testGame() public {
@@ -99,24 +120,24 @@ contract PlagueGameTest is Test {
         assertEq(plagueGame.isGameOver(), false, "game should not be over");
 
         plagueGame.startGame();
-        _mockVRFResponse();
 
-        // Game can't be started twice
-        vm.expectRevert();
-        plagueGame.startGame();
+        vm.expectRevert(VRFResponseMissing.selector);
+        plagueGame.startEpoch();
+
+        _mockVRFResponse();
 
         assertEq(plagueGame.gameStarted(), true, "game should be started");
 
         for (uint256 i = 0; i < roundNumber; ++i) {
             uint256 healthyVillagersEndOfRound = plagueGame.getHealthyVillagersNumber();
-            uint256 deadVillagersEndOfRound = _fetchDoctorsToStatus(PlagueGame.Status.Dead);
+            uint256[] memory deadVillagersEndOfRound = _fetchDoctorsToStatus(PlagueGame.Status.Dead);
 
             plagueGame.startEpoch();
 
             assertEq(plagueGame.currentEpoch(), i + 1, "should be the correct epoch");
 
             // Epoch can't be started twice
-            vm.expectRevert();
+            vm.expectRevert(VRFResponseMissing.selector);
             plagueGame.startEpoch();
 
             uint256 expectedInfections = healthyVillagersEndOfRound * infectedDoctorsPerEpoch[i] / 10_000;
@@ -131,7 +152,7 @@ contract PlagueGameTest is Test {
                 "correct number of the villagers should be infected"
             );
             assertEq(
-                _fetchDoctorsToStatus(PlagueGame.Status.Infected),
+                _fetchDoctorsToStatus(PlagueGame.Status.Infected).length,
                 expectedInfections,
                 "The expected number of villagers is infected"
             );
@@ -146,46 +167,74 @@ contract PlagueGameTest is Test {
             );
 
             assertEq(
-                _fetchDoctorsToStatus(PlagueGame.Status.Infected),
+                _fetchDoctorsToStatus(PlagueGame.Status.Infected).length,
                 expectedInfections - doctorsToCure,
                 "The expected number of villagers is infected"
             );
 
+            uint256[] memory deadDoctors = _fetchDoctorsToStatus(PlagueGame.Status.Dead);
+            for (uint256 j = 0; j < deadDoctors.length; j++) {
+                vm.expectRevert(DoctorNotInfected.selector);
+                plagueGame.drinkPotion(deadDoctors[j], lastPotionUsed);
+            }
+
+            uint256[] memory healthyDoctors = _fetchDoctorsToStatus(PlagueGame.Status.Healthy);
+            for (uint256 j = 0; j < healthyDoctors.length; j++) {
+                vm.expectRevert(DoctorNotInfected.selector);
+                plagueGame.drinkPotion(healthyDoctors[j], lastPotionUsed);
+            }
+
+            vm.expectRevert(EpochNotReadyToEnd.selector);
+            plagueGame.endEpoch();
+
             skip(epochDuration);
             plagueGame.endEpoch();
 
-            // Epoch can't be ended twice
-            vm.expectRevert();
-            plagueGame.endEpoch();
-
             if (i == roundNumber - 1) {
+                vm.expectRevert(GameIsOver.selector);
+                plagueGame.endEpoch();
+
+                vm.expectRevert(GameIsOver.selector);
+                plagueGame.startEpoch();
+
                 assertEq(plagueGame.isGameOver(), true, "game should be over");
             } else {
+                // Epoch can't be ended twice
+                vm.expectRevert(EpochAlreadyEnded.selector);
+                plagueGame.endEpoch();
+
                 assertEq(plagueGame.isGameOver(), false, "game should not be over");
+
+                vm.expectRevert(VRFResponseMissing.selector);
+                plagueGame.startEpoch();
+
                 _mockVRFResponse();
             }
 
             assertEq(
-                _fetchDoctorsToStatus(PlagueGame.Status.Dead) - deadVillagersEndOfRound,
+                _fetchDoctorsToStatus(PlagueGame.Status.Dead).length - deadVillagersEndOfRound.length,
                 expectedInfections - doctorsToCure,
                 "The expected number of villagers is dead"
             );
 
-            assertEq(_fetchDoctorsToStatus(PlagueGame.Status.Infected), 0, "No more infected villagers");
+            assertEq(_fetchDoctorsToStatus(PlagueGame.Status.Infected).length, 0, "No more infected villagers");
         }
     }
 
     function testPrizeWithdrawal() public {
         testFullGame(0);
-        plagueGame.allowPrizeWithdraw(true);
 
         uint256 aliveDoctors = plagueGame.getHealthyVillagersNumber();
+        uint256[] memory winners = _fetchDoctorsToStatus(PlagueGame.Status.Healthy);
 
-        uint256[] memory winners = _loadWinners();
         assertEq(winners.length, aliveDoctors, "The winners array should be the same size as the number of winners");
         assertEq(aliveDoctors, 71, "We should have 71 winners");
-
         assertEq(prizePot, address(plagueGame).balance, "The prize pot should be equal to the contract balance");
+
+        vm.expectRevert(WithdrawalClosed.selector);
+        plagueGame.withdrawPrize(winners[0]);
+
+        plagueGame.allowPrizeWithdraw(true);
 
         uint256 prize = address(plagueGame).balance / aliveDoctors;
 
@@ -193,8 +242,15 @@ contract PlagueGameTest is Test {
             uint256 winner = winners[i];
 
             vm.prank(BOB);
-            vm.expectRevert();
+            vm.expectRevert(NotAWinner.selector);
             plagueGame.withdrawPrize(winner);
+
+            plagueGame.allowPrizeWithdraw(false);
+
+            vm.expectRevert(WithdrawalClosed.selector);
+            plagueGame.withdrawPrize(winner);
+
+            plagueGame.allowPrizeWithdraw(true);
 
             uint256 balanceBefore = address(this).balance;
             plagueGame.withdrawPrize(winner);
@@ -222,7 +278,7 @@ contract PlagueGameTest is Test {
             }
         }
 
-        uint256[] memory winners = _loadWinners();
+        uint256[] memory winners = _fetchDoctorsToStatus(PlagueGame.Status.Healthy);
 
         // assertLe(winners.length, playerNumberToEndGame, "There should be no more then 10 winners");
         assertGt(winners.length, 0, "There should at least 1 winner");
@@ -243,18 +299,23 @@ contract PlagueGameTest is Test {
                     ++indexSearchForInfected;
                 }
 
-                address owner = villagers.ownerOf(indexSearchForInfected);
-                potions.transferFrom(address(this), owner, lastPotionUsed);
+                _cureDoctor(indexSearchForInfected);
 
-                vm.startPrank(owner);
-                potions.approve(address(plagueGame), lastPotionUsed);
-                plagueGame.drinkPotion(indexSearchForInfected, lastPotionUsed++);
-                vm.stopPrank();
                 // console.log(lastPotionUsed);
             }
         }
 
         // console.log("end round");
+    }
+
+    function _cureDoctor(uint256 _doctorId) private {
+        address owner = villagers.ownerOf(_doctorId);
+        potions.transferFrom(address(this), owner, lastPotionUsed);
+
+        vm.startPrank(owner);
+        potions.approve(address(plagueGame), lastPotionUsed);
+        plagueGame.drinkPotion(_doctorId, lastPotionUsed++);
+        vm.stopPrank();
     }
 
     function _getRandomNumber(uint256 _randomnessSeed, uint256 _bound) private returns (uint256 randomNumber) {
@@ -278,29 +339,52 @@ contract PlagueGameTest is Test {
         lastSubscriptionBalance = vrfBalance;
     }
 
-    function _fetchDoctorsToStatus(PlagueGame.Status _status) private view returns (uint256 doctors) {
+    function _fetchDoctorsToStatus(PlagueGame.Status _status) private returns (uint256[] memory doctors) {
         for (uint256 i = 0; i < collectionSize; i++) {
             if (plagueGame.villagerStatus(i) == _status) {
-                ++doctors;
+                doctorsArray.push(i);
             }
         }
+
+        doctors = doctorsArray;
+        doctorsArray = new uint256[](0);
     }
 
     function _initializeGame() private {
         for (uint256 i = 0; i < 10; i++) {
             plagueGame.initializeGame(collectionSize / 10);
         }
+
+        vm.expectRevert(TooManyInitialized.selector);
+        plagueGame.initializeGame(collectionSize / 10);
     }
 
-    function _loadWinners() private returns (uint256[] memory winners) {
-        for (uint256 i = 0; i < collectionSize; i++) {
-            if (plagueGame.villagerStatus(i) == PlagueGame.Status.Healthy) {
-                winnersArray.push(i);
-            }
-        }
+    // function _loadWinners() private returns (uint256[] memory winners) {
+    //     for (uint256 i = 0; i < collectionSize; i++) {
+    //         if (plagueGame.villagerStatus(i) == PlagueGame.Status.Healthy) {
+    //             doctorsArray.push(i);
+    //         }
+    //     }
 
-        winners = winnersArray;
-        winnersArray = new uint256[](0);
+    //     winners = doctorsArray;
+    //     doctorsArray = new uint256[](0);
+    // }
+
+    function _gameSetup() private {
+        plagueGame = new PlagueGame(
+            villagers,
+            potions,
+            infectedDoctorsPerEpoch,
+            playerNumberToEndGame,
+            epochDuration,
+            coordinator,
+            subscriptionId,
+            keyHash,
+            maxGas
+        );
+        coordinator.addConsumer(subscriptionId, address(plagueGame));
+        (bool success,) = payable(plagueGame).call{value: prizePot}("");
+        assert(success);
     }
 
     receive() external payable {}

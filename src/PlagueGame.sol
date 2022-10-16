@@ -7,6 +7,24 @@ import "openzeppelin/token/ERC721//extensions/IERC721Enumerable.sol";
 import "chainlink/VRFConsumerBaseV2.sol";
 import "chainlink/interfaces/VRFCoordinatorV2Interface.sol";
 
+error InvalidInfectionPercentage();
+error TooManyInitialized();
+error CollectionTooBig();
+error GameAlreadyStarted();
+error GameNotStarted();
+error GameNotOver();
+error GameIsOver();
+error EpochNotReadyToEnd();
+error EpochAlreadyEnded();
+error DoctorNotInfected();
+error UpdateToSameStatus();
+error InvalidRequestId();
+error VRFResponseMissing();
+error VRFRequestAlreadyAsked();
+error NotAWinner();
+error WithdrawalClosed();
+error FundsTransferFailed();
+
 contract PlagueGame is Ownable2Step, VRFConsumerBaseV2 {
     event Sick(uint256 indexed villagerId);
     event Cured(uint256 indexed villagerId);
@@ -54,7 +72,7 @@ contract PlagueGame is Ownable2Step, VRFConsumerBaseV2 {
 
     uint256 private immutable villagerNumber;
 
-    bool prizeWithdrawalAllowed;
+    bool public prizeWithdrawalAllowed;
 
     uint64 subscriptionId;
     bytes32 keyHash;
@@ -62,7 +80,7 @@ contract PlagueGame is Ownable2Step, VRFConsumerBaseV2 {
 
     modifier gameOn() {
         if (isGameOver || !gameStarted) {
-            revert("game over");
+            revert GameIsOver();
         }
         _;
     }
@@ -84,12 +102,12 @@ contract PlagueGame is Ownable2Step, VRFConsumerBaseV2 {
         playerNumberToEndGame = _playerNumberToEndGame;
 
         if (villagerNumber > 2000) {
-            revert("Collection too big");
+            revert CollectionTooBig();
         }
 
         for (uint256 i = 0; i < _rounds.length; i++) {
             if (_rounds[i] > BASIS_POINT) {
-                revert("Invalid infection percentage");
+                revert InvalidInfectionPercentage();
             }
         }
 
@@ -111,7 +129,7 @@ contract PlagueGame is Ownable2Step, VRFConsumerBaseV2 {
         uint256 lastVillagerUpdated = healthyVillagers.length();
 
         if (lastVillagerUpdated + _amount > villagerNumber) {
-            revert("Too many doctors intialized");
+            revert TooManyInitialized();
         }
 
         uint256 lastIndex = lastVillagerUpdated + _amount;
@@ -122,24 +140,24 @@ contract PlagueGame is Ownable2Step, VRFConsumerBaseV2 {
     }
 
     function allowPrizeWithdraw(bool _status) external onlyOwner {
-        if (_status == prizeWithdrawalAllowed) {
-            revert("Prize withdrawal not allowed");
+        if (!isGameOver) {
+            revert GameNotOver();
         }
 
-        if (!isGameOver) {
-            revert("Game not over");
+        if (_status == prizeWithdrawalAllowed) {
+            revert UpdateToSameStatus();
         }
 
         prizeWithdrawalAllowed = _status;
     }
 
     function startGame() external onlyOwner {
-        if (healthyVillagers.length() < villagerNumber) {
-            revert("Game not ready");
+        if (gameStarted) {
+            revert GameAlreadyStarted();
         }
 
-        if (gameStarted) {
-            revert("Game already started");
+        if (healthyVillagers.length() < villagerNumber) {
+            revert GameNotStarted();
         }
 
         gameStarted = true;
@@ -147,16 +165,12 @@ contract PlagueGame is Ownable2Step, VRFConsumerBaseV2 {
     }
 
     function startEpoch() public gameOn {
-        ++currentEpoch;
-        uint256[] memory randomNumbers = epochVRFNumber[epochVRFRequest[currentEpoch]];
-
+        uint256[] memory randomNumbers = epochVRFNumber[epochVRFRequest[currentEpoch + 1]];
         if (randomNumbers.length == 0) {
-            revert("need to ask for VRF");
+            revert VRFResponseMissing();
         }
 
-        if (epochStarted[currentEpoch] == true) {
-            revert("epoch already started");
-        }
+        ++currentEpoch;
 
         epochStarted[currentEpoch] = true;
         epochStartTime = block.timestamp;
@@ -169,11 +183,11 @@ contract PlagueGame is Ownable2Step, VRFConsumerBaseV2 {
 
     function endEpoch() external gameOn {
         if (block.timestamp < epochStartTime + epochDuration) {
-            revert("epoch not ended");
+            revert EpochNotReadyToEnd();
         }
 
         if (epochEnded[currentEpoch] == true) {
-            revert("epoch already ended");
+            revert EpochAlreadyEnded();
         }
 
         epochEnded[currentEpoch] = true;
@@ -197,7 +211,7 @@ contract PlagueGame is Ownable2Step, VRFConsumerBaseV2 {
 
     function drinkPotion(uint256 _villagerId, uint256 _potionId) external {
         if (villagerStatus[_villagerId] != Status.Infected) {
-            revert();
+            revert DoctorNotInfected();
         }
 
         villagerStatus[_villagerId] = Status.Healthy;
@@ -210,24 +224,24 @@ contract PlagueGame is Ownable2Step, VRFConsumerBaseV2 {
 
     function withdrawPrize(uint256 _villagerId) external {
         if (!prizeWithdrawalAllowed) {
-            revert("withdrawal not open");
+            revert WithdrawalClosed();
         }
 
         if (
             villagerStatus[_villagerId] != Status.Healthy || villagers.ownerOf(_villagerId) != msg.sender
                 || withdrewPrize[_villagerId]
         ) {
-            revert("not owner or not healthy");
+            revert NotAWinner();
         }
 
         withdrewPrize[_villagerId] = true;
 
         uint256 prize = prizePot / healthyVillagers.length();
 
-        (bool succes,) = payable(msg.sender).call{value: prize}("");
+        (bool success,) = payable(msg.sender).call{value: prize}("");
 
-        if (!succes) {
-            revert("transfer failed");
+        if (!success) {
+            revert FundsTransferFailed();
         }
     }
 
@@ -288,8 +302,9 @@ contract PlagueGame is Ownable2Step, VRFConsumerBaseV2 {
     // Since the array to select the random villager will be at most 1k, uint32 numbers are enough
     // to get sufficiently random numbers
     function _requestRandomWords() private {
+        // Extra safety check, but that shouldn't happen
         if (epochVRFNumber[epochVRFRequest[currentEpoch + 1]].length != 0) {
-            revert("request locked");
+            revert VRFRequestAlreadyAsked();
         }
 
         uint256 infectedDoctors = healthyVillagers.length() * infectionPercentagePerRound[currentEpoch] / BASIS_POINT;
@@ -302,11 +317,11 @@ contract PlagueGame is Ownable2Step, VRFConsumerBaseV2 {
 
     function fulfillRandomWords(uint256 requestId, uint256[] memory randomWords) internal override {
         if (requestId != epochVRFRequest[currentEpoch + 1]) {
-            revert("wrong request");
+            revert InvalidRequestId();
         }
 
         if (epochVRFNumber[epochVRFRequest[currentEpoch + 1]].length != 0) {
-            revert("request locked");
+            revert VRFRequestAlreadyAsked();
         }
 
         epochVRFNumber[requestId] = randomWords;
