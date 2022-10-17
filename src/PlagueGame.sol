@@ -44,10 +44,9 @@ contract PlagueGame is Ownable2Step, VRFConsumerBaseV2 {
 
     /// @dev Different statuses a doctor can have
     enum Status {
-        Unknown,
+        Dead,
         Healthy,
-        Infected,
-        Dead
+        Infected
     }
 
     /// @notice Address of the doctor collection contract
@@ -218,7 +217,7 @@ contract PlagueGame is Ownable2Step, VRFConsumerBaseV2 {
     }
 
     /// @notice Starts a new epoch if the conditions are met
-    function startEpoch() public gameOn {
+    function startEpoch() external gameOn {
         ++currentEpoch;
 
         uint256[] memory randomNumbers = epochVRFNumber[epochVRFRequest[currentEpoch]];
