@@ -13,7 +13,7 @@ error CollectionTooBig();
 error GameAlreadyStarted();
 error GameNotStarted();
 error GameNotOver();
-error GameIsOver();
+error GameIsClosed();
 error EpochNotReadyToEnd();
 error EpochAlreadyEnded();
 error DoctorNotInfected();
@@ -26,13 +26,18 @@ error WithdrawalClosed();
 error FundsTransferFailed();
 
 contract PlagueGame is Ownable2Step, VRFConsumerBaseV2 {
-    event Sick(uint256 indexed villagerId);
-    event Cured(uint256 indexed villagerId);
-    event Dead(uint256 indexed villagerId);
-    event RandomWordsFulfilled(uint256 epoch, uint256 requestId);
-
     using EnumerableSet for EnumerableSet.UintSet;
 
+    /// @dev Event emitted when a doctor is infected
+    event Sick(uint256 indexed villagerId);
+    /// @dev Event emitted when a doctor is cured
+    event Cured(uint256 indexed villagerId);
+    /// @dev Event emitted when a doctor is dead
+    event Dead(uint256 indexed villagerId);
+    /// @dev Event emitted when the VRF response is received
+    event RandomWordsFulfilled(uint256 epoch, uint256 requestId);
+
+    /// @dev Different statuses a doctor can have
     enum Status {
         Unknown,
         Healthy,
@@ -40,55 +45,87 @@ contract PlagueGame is Ownable2Step, VRFConsumerBaseV2 {
         Dead
     }
 
+    /// @notice Address of the doctor collection contract
     IERC721Enumerable public immutable villagers;
+    /// @notice Address of the potion collection contract
     IERC721Enumerable public immutable potions;
-    VRFCoordinatorV2Interface private immutable vrfCoordinator;
+    /// @notice Number of doctors still alive triggering the end of the game
     uint256 public immutable playerNumberToEndGame;
-
-    uint256 private constant BASIS_POINT = 10_000;
-
-    mapping(uint256 => Status) public villagerStatus;
-    mapping(uint256 => uint256) public epochVRFRequest;
-    mapping(uint256 => uint256[]) public epochVRFNumber;
-    mapping(uint256 => bool) public epochStarted;
-    mapping(uint256 => bool) public epochEnded;
-
-    bool public isGameOver;
-    bool public gameStarted;
-    uint256 public prizePot;
-
+    /// @notice Percentage of doctors that will  be infected each epoch
     uint256[] public infectionPercentagePerRound;
+    /// @notice Total number of epochs
     uint256 public immutable totalRoundNumber;
-    mapping(uint256 => uint256) public infectedDoctorsPerEpoch;
-
-    uint256 public currentEpoch;
-    bool public epochLocked;
-    uint256 public epochDuration;
-    uint256 public epochStartTime;
-
-    EnumerableSet.UintSet healthyVillagers;
-
-    mapping(uint256 => bool) withdrewPrize;
-
+    /// @dev Number of doctors in the collection
     uint256 private immutable villagerNumber;
 
+    /// @notice Current epoch. Epoch is incremented at the beginning of each round
+    uint256 public currentEpoch;
+    /// @notice Duration of each epoch in seconds
+    uint256 public epochDuration;
+    /// @notice Start time of the latest epoch
+    uint256 public epochStartTime;
+
+    /// @notice Status of the villagers
+    mapping(uint256 => Status) public villagerStatus;
+
+    /// @notice Stores the number of doctors infect each round
+    mapping(uint256 => uint256) public infectedDoctorsPerEpoch;
+    /// @notice VRF request IDs for each epoch
+    mapping(uint256 => uint256) public epochVRFRequest;
+    /// @notice VRF response for each epoch
+    mapping(uint256 => uint256[]) public epochVRFNumber;
+    /// @notice Stores if a user already claimed his prize for a doctors he owns
+    mapping(uint256 => bool) public withdrewPrize;
+    /// @dev Stores if an epoch has started
+    mapping(uint256 => bool) private epochStarted;
+    /// @dev Stores if an epoch has started
+    mapping(uint256 => bool) private epochEnded;
+
+    /// @dev List of healthy villagers
+    EnumerableSet.UintSet private healthyVillagers;
+
+    /// @notice True is the game is over
+    bool public isGameOver;
+    /// @notice True is the game started
+    bool public gameStarted;
+    /// @notice Prize pot that will be distributed to the winners at the end of the game
+    uint256 public prizePot;
+    /// @notice States if the withdrawal is open. Set by the contract owner
     bool public prizeWithdrawalAllowed;
 
-    uint64 subscriptionId;
-    bytes32 keyHash;
-    uint32 maxGas;
+    /// @dev Address of the VRF coordinator
+    VRFCoordinatorV2Interface private immutable vrfCoordinator;
+    /// @dev VRF subscription ID
+    uint64 private subscriptionId;
+    /// @dev VRF key hash
+    bytes32 private keyHash;
+    /// @dev Max gas used on the VRF callback
+    uint32 private maxGas;
+
+    /// @dev Basis point to calulate percentages
+    uint256 private constant BASIS_POINT = 10_000;
 
     modifier gameOn() {
         if (isGameOver || !gameStarted) {
-            revert GameIsOver();
+            revert GameIsClosed();
         }
         _;
     }
 
+    /// @dev Constructor
+    /// @param _villagers Address of the doctor collection contract
+    /// @param _potions Address of the potion collection contract
+    /// @param _infectionPercentagePerRound Percentage of doctors that will  be infected each epoch
+    /// @param _playerNumberToEndGame Number of doctors still alive triggering the end of the game
+    /// @param _epochDuration Duration of each epoch in seconds
+    /// @param _vrfCoordinator Address of the VRF coordinator
+    /// @param _subscriptionId VRF subscription ID
+    /// @param _keyHash VRF key hash
+    /// @param _maxGas Max gas used on the VRF callback
     constructor(
         IERC721Enumerable _villagers,
         IERC721Enumerable _potions,
-        uint256[] memory _rounds,
+        uint256[] memory _infectionPercentagePerRound,
         uint256 _playerNumberToEndGame,
         uint256 _epochDuration,
         VRFCoordinatorV2Interface _vrfCoordinator,
@@ -96,35 +133,41 @@ contract PlagueGame is Ownable2Step, VRFConsumerBaseV2 {
         bytes32 _keyHash,
         uint32 _maxGas
     ) VRFConsumerBaseV2(address(_vrfCoordinator)) {
+        for (uint256 i = 0; i < _infectionPercentagePerRound.length; i++) {
+            if (_infectionPercentagePerRound[i] > BASIS_POINT) {
+                revert InvalidInfectionPercentage();
+            }
+        }
+
         villagers = _villagers;
         vrfCoordinator = _vrfCoordinator;
         villagerNumber = _villagers.totalSupply();
-        playerNumberToEndGame = _playerNumberToEndGame;
 
         if (villagerNumber > 2000) {
             revert CollectionTooBig();
         }
 
-        for (uint256 i = 0; i < _rounds.length; i++) {
-            if (_rounds[i] > BASIS_POINT) {
-                revert InvalidInfectionPercentage();
-            }
-        }
-
+        playerNumberToEndGame = _playerNumberToEndGame;
         potions = _potions;
-        infectionPercentagePerRound = _rounds;
-        totalRoundNumber = _rounds.length;
+        infectionPercentagePerRound = _infectionPercentagePerRound;
+        totalRoundNumber = _infectionPercentagePerRound.length;
         epochDuration = _epochDuration;
 
+        // VRF setup
         subscriptionId = _subscriptionId;
         keyHash = _keyHash;
         maxGas = _maxGas;
     }
 
+    /// @notice Gets the number of healthy doctors
+    /// @return healthyVillagersNumber Number of healthy doctors
     function getHealthyVillagersNumber() external view returns (uint256 healthyVillagersNumber) {
         healthyVillagersNumber = healthyVillagers.length();
     }
 
+    /// @notice Initializes the game
+    /// @dev This function is very expensive is gas, that's why it needs to be called several times
+    /// @param _amount Amount of doctors to initialize
     function initializeGame(uint256 _amount) external {
         uint256 lastVillagerUpdated = healthyVillagers.length();
 
@@ -139,6 +182,8 @@ contract PlagueGame is Ownable2Step, VRFConsumerBaseV2 {
         }
     }
 
+    /// @notice Starts and pauses the prize withdrawal
+    /// @param _status True to allow the withdrawal of the prize
     function allowPrizeWithdraw(bool _status) external onlyOwner {
         if (!isGameOver) {
             revert GameNotOver();
@@ -151,6 +196,7 @@ contract PlagueGame is Ownable2Step, VRFConsumerBaseV2 {
         prizeWithdrawalAllowed = _status;
     }
 
+    /// @notice Starts the game
     function startGame() external onlyOwner {
         if (gameStarted) {
             revert GameAlreadyStarted();
@@ -164,6 +210,7 @@ contract PlagueGame is Ownable2Step, VRFConsumerBaseV2 {
         _requestRandomWords();
     }
 
+    /// @notice Starts a new epoch if the conditions are met
     function startEpoch() public gameOn {
         uint256[] memory randomNumbers = epochVRFNumber[epochVRFRequest[currentEpoch + 1]];
         if (randomNumbers.length == 0) {
@@ -181,6 +228,7 @@ contract PlagueGame is Ownable2Step, VRFConsumerBaseV2 {
         _infectRandomVillagers(healthyVillagersNumber, toMakeSick, randomNumbers);
     }
 
+    /// @notice Ends the current epoch if the condition are met
     function endEpoch() external gameOn {
         if (block.timestamp < epochStartTime + epochDuration) {
             revert EpochNotReadyToEnd();
@@ -209,6 +257,10 @@ contract PlagueGame is Ownable2Step, VRFConsumerBaseV2 {
         _requestRandomWords();
     }
 
+    /// @notice Burns a potion to cure a doctor
+    /// @dev User needs to have given approval to the contract
+    /// @param _villagerId ID of the doctor to cure
+    /// @param _potionId ID of the potion to use
     function drinkPotion(uint256 _villagerId, uint256 _potionId) external {
         if (villagerStatus[_villagerId] != Status.Infected) {
             revert DoctorNotInfected();
@@ -219,9 +271,11 @@ contract PlagueGame is Ownable2Step, VRFConsumerBaseV2 {
 
         _burnPotion(_potionId);
 
-        // emit Cured(_villagerId);
+        emit Cured(_villagerId);
     }
 
+    /// @notice Withdraws the prize for a winning doctor
+    /// @param _villagerId ID of the doctor to withdraw the prize for
     function withdrawPrize(uint256 _villagerId) external {
         if (!prizeWithdrawalAllowed) {
             revert WithdrawalClosed();
@@ -245,13 +299,17 @@ contract PlagueGame is Ownable2Step, VRFConsumerBaseV2 {
         }
     }
 
+    /// @dev Send AVAX to the contract to increase the prize pot
     receive() external payable {
         prizePot += msg.value;
     }
 
-    // Loops through the healthy villagers and infects them
-    // until the number of infected villagers is equal to the
-    // requested number
+    /// @dev Loops through the healthy villagers and infects them
+    /// until the number of infected villagers is equal to the
+    /// requested number
+    /// @param _healthyVillagersNumber Number of healthy villagers
+    /// @param _toMakeSick Number of villagers to infect
+    /// @param _randomNumbers Random numbers provided by VRF to use to infect villagers
     function _infectRandomVillagers(
         uint256 _healthyVillagersNumber,
         uint256 _toMakeSick,
@@ -272,7 +330,7 @@ contract PlagueGame is Ownable2Step, VRFConsumerBaseV2 {
 
             villagerStatus[villagerId] = Status.Infected;
 
-            // emit Sick(villagerId);
+            emit Sick(villagerId);
 
             --_healthyVillagersNumber;
             ++madeSick;
@@ -284,10 +342,15 @@ contract PlagueGame is Ownable2Step, VRFConsumerBaseV2 {
         }
     }
 
+    /// @dev Burns a potion NFT
+    /// @param _potionId ID of the NFT to burn
     function _burnPotion(uint256 _potionId) internal {
         potions.transferFrom(msg.sender, address(0xdead), _potionId);
     }
 
+    /// @dev Slices a UINT256 VRF random number to get a up to 8 uint32 random numbers
+    /// @param _randomNumber Random number to slice
+    /// @param _offset Offset of the slice
     function _sliceRandomNumber(uint256 _randomNumber, uint256 _offset)
         internal
         pure
@@ -298,9 +361,9 @@ contract PlagueGame is Ownable2Step, VRFConsumerBaseV2 {
         }
     }
 
-    // Random numbers will be sliced into uint32 to reduce the amount of random numbers needed
-    // Since the array to select the random villager will be at most 1k, uint32 numbers are enough
-    // to get sufficiently random numbers
+    /// @dev Random numbers will be sliced into uint32s to reduce the amount of random numbers needed
+    /// Since the array to select the random villager will be at most 1k, uint32 numbers are enough
+    /// to get sufficiently random numbers
     function _requestRandomWords() private {
         // Extra safety check, but that shouldn't happen
         if (epochVRFNumber[epochVRFRequest[currentEpoch + 1]].length != 0) {
@@ -315,8 +378,11 @@ contract PlagueGame is Ownable2Step, VRFConsumerBaseV2 {
             vrfCoordinator.requestRandomWords(keyHash, subscriptionId, 3, maxGas, wordsNumber);
     }
 
-    function fulfillRandomWords(uint256 requestId, uint256[] memory randomWords) internal override {
-        if (requestId != epochVRFRequest[currentEpoch + 1]) {
+    /// @dev Callback function used by VRF Coordinator
+    /// @param _requestId Request ID
+    /// @param _randomWords Random numbers provided by VRF
+    function fulfillRandomWords(uint256 _requestId, uint256[] memory _randomWords) internal override {
+        if (_requestId != epochVRFRequest[currentEpoch + 1]) {
             revert InvalidRequestId();
         }
 
@@ -324,8 +390,8 @@ contract PlagueGame is Ownable2Step, VRFConsumerBaseV2 {
             revert VRFRequestAlreadyAsked();
         }
 
-        epochVRFNumber[requestId] = randomWords;
+        epochVRFNumber[_requestId] = _randomWords;
 
-        emit RandomWordsFulfilled(currentEpoch + 1, requestId);
+        emit RandomWordsFulfilled(currentEpoch + 1, _requestId);
     }
 }
