@@ -28,14 +28,19 @@ error FundsTransferFailed();
 contract PlagueGame is Ownable2Step, VRFConsumerBaseV2 {
     using EnumerableSet for EnumerableSet.UintSet;
 
-    /// @dev Event emitted when a doctor is infected
-    event Sick(uint256 indexed villagerId);
-    /// @dev Event emitted when a doctor is cured
-    event Cured(uint256 indexed villagerId);
-    /// @dev Event emitted when a doctor is dead
-    event Dead(uint256 indexed villagerId);
-    /// @dev Event emitted when the VRF response is received
+    /// Game events
+    event GameStarted();
     event RandomWordsFulfilled(uint256 epoch, uint256 requestId);
+    event DoctorsInfectedThisEpoch(uint256 indexed epoch, uint256 deadDoctors);
+    event DoctorsDeadThisEpoch(uint256 indexed epoch, uint256 deadDoctors);
+    event GameOver();
+    event PrizeWithdrawn(uint256 indexed villagerId, uint256 prize);
+    event PrizePotIncreased(uint256 amount);
+
+    /// Individual events
+    event Sick(uint256 indexed villagerId);
+    event Cured(uint256 indexed villagerId);
+    event Dead(uint256 indexed villagerId);
 
     /// @dev Different statuses a doctor can have
     enum Status {
@@ -143,7 +148,7 @@ contract PlagueGame is Ownable2Step, VRFConsumerBaseV2 {
         vrfCoordinator = _vrfCoordinator;
         villagerNumber = _villagers.totalSupply();
 
-        if (villagerNumber > 2000) {
+        if (villagerNumber > 1200) {
             revert CollectionTooBig();
         }
 
@@ -207,17 +212,19 @@ contract PlagueGame is Ownable2Step, VRFConsumerBaseV2 {
         }
 
         gameStarted = true;
+        emit GameStarted();
+
         _requestRandomWords();
     }
 
     /// @notice Starts a new epoch if the conditions are met
     function startEpoch() public gameOn {
-        uint256[] memory randomNumbers = epochVRFNumber[epochVRFRequest[currentEpoch + 1]];
+        ++currentEpoch;
+
+        uint256[] memory randomNumbers = epochVRFNumber[epochVRFRequest[currentEpoch]];
         if (randomNumbers.length == 0) {
             revert VRFResponseMissing();
         }
-
-        ++currentEpoch;
 
         epochStarted[currentEpoch] = true;
         epochStartTime = block.timestamp;
@@ -226,31 +233,36 @@ contract PlagueGame is Ownable2Step, VRFConsumerBaseV2 {
         uint256 toMakeSick = healthyVillagersNumber * infectionPercentagePerRound[currentEpoch - 1] / BASIS_POINT;
 
         _infectRandomVillagers(healthyVillagersNumber, toMakeSick, randomNumbers);
+
+        emit DoctorsInfectedThisEpoch(currentEpoch, toMakeSick);
     }
 
-    /// @notice Ends the current epoch if the condition are met
+    /// @notice Ends the current epoch if the conditions are met
     function endEpoch() external gameOn {
-        if (block.timestamp < epochStartTime + epochDuration) {
-            revert EpochNotReadyToEnd();
-        }
-
         if (epochEnded[currentEpoch] == true) {
             revert EpochAlreadyEnded();
         }
 
+        if (block.timestamp < epochStartTime + epochDuration) {
+            revert EpochNotReadyToEnd();
+        }
+
         epochEnded[currentEpoch] = true;
 
-        uint256 dead;
+        uint256 deads;
         for (uint256 i = 0; i < villagerNumber; ++i) {
             if (villagerStatus[i] == Status.Infected) {
                 villagerStatus[i] = Status.Dead;
-                // emit Dead(i);
-                ++dead;
+                ++deads;
+                emit Dead(i);
             }
         }
 
+        emit DoctorsDeadThisEpoch(currentEpoch, deads);
+
         if (healthyVillagers.length() <= 10 || currentEpoch == 12) {
             isGameOver = true;
+            emit GameOver();
             return;
         }
 
@@ -297,16 +309,19 @@ contract PlagueGame is Ownable2Step, VRFConsumerBaseV2 {
         if (!success) {
             revert FundsTransferFailed();
         }
+
+        emit PrizeWithdrawn(_villagerId, prize);
     }
 
     /// @dev Send AVAX to the contract to increase the prize pot
     receive() external payable {
         prizePot += msg.value;
+        emit PrizePotIncreased(msg.value);
     }
 
-    /// @dev Loops through the healthy villagers and infects them
-    /// until the number of infected villagers is equal to the
-    /// requested number
+    /// @dev Loops through the healthy villagers and infects them until
+    /// the number of infected villagers is equal to the requested number
+    /// @dev Each VRF random number is used 8 times
     /// @param _healthyVillagersNumber Number of healthy villagers
     /// @param _toMakeSick Number of villagers to infect
     /// @param _randomNumbers Random numbers provided by VRF to use to infect villagers
@@ -322,23 +337,25 @@ contract PlagueGame is Ownable2Step, VRFConsumerBaseV2 {
         uint256 randomNumberSliceOffset;
 
         while (madeSick < _toMakeSick) {
+            // Slices the random number to get the random villager that will be infected
             healthyVillagerId =
                 _sliceRandomNumber(_randomNumbers[randomNumberId], randomNumberSliceOffset++) % _healthyVillagersNumber;
             villagerId = healthyVillagers.at(healthyVillagerId);
 
+            // Removing the villagers from the healthy villagers list and infecting him
             healthyVillagers.remove(villagerId);
-
             villagerStatus[villagerId] = Status.Infected;
-
-            emit Sick(villagerId);
 
             --_healthyVillagersNumber;
             ++madeSick;
 
+            // IF the random number has been used 8 times, we get a new one
             if (randomNumberSliceOffset == 8) {
                 randomNumberSliceOffset = 0;
                 ++randomNumberId;
             }
+
+            emit Sick(villagerId);
         }
     }
 
@@ -348,7 +365,7 @@ contract PlagueGame is Ownable2Step, VRFConsumerBaseV2 {
         potions.transferFrom(msg.sender, address(0xdead), _potionId);
     }
 
-    /// @dev Slices a UINT256 VRF random number to get a up to 8 uint32 random numbers
+    /// @dev Slices a uint256 VRF random number to get a up to 8 uint32 random numbers
     /// @param _randomNumber Random number to slice
     /// @param _offset Offset of the slice
     function _sliceRandomNumber(uint256 _randomNumber, uint256 _offset)
