@@ -11,7 +11,7 @@ error OnlyCoordinatorCanFulfill(address have, address want);
 
 contract PlagueGameTest is Test {
     // Collection configuration
-    uint256 collectionSize = 1000;
+    uint256 collectionSize = 1200;
     uint256 roundNumber = 12;
     uint256 playerNumberToEndGame = 10;
     uint256[] infectedDoctorsPerEpoch =
@@ -55,7 +55,6 @@ contract PlagueGameTest is Test {
         coordinator.fundSubscription(subscriptionId, lastSubscriptionBalance);
 
         _gameSetup();
-
         _initializeGame();
     }
 
@@ -191,10 +190,10 @@ contract PlagueGameTest is Test {
             plagueGame.endEpoch();
 
             if (i == roundNumber - 1) {
-                vm.expectRevert(GameIsOver.selector);
+                vm.expectRevert(GameIsClosed.selector);
                 plagueGame.endEpoch();
 
-                vm.expectRevert(GameIsOver.selector);
+                vm.expectRevert(GameIsClosed.selector);
                 plagueGame.startEpoch();
 
                 assertEq(plagueGame.isGameOver(), true, "game should be over");
@@ -228,7 +227,6 @@ contract PlagueGameTest is Test {
         uint256[] memory winners = _fetchDoctorsToStatus(PlagueGame.Status.Healthy);
 
         assertEq(winners.length, aliveDoctors, "The winners array should be the same size as the number of winners");
-        assertEq(aliveDoctors, 71, "We should have 71 winners");
         assertEq(prizePot, address(plagueGame).balance, "The prize pot should be equal to the contract balance");
 
         vm.expectRevert(WithdrawalClosed.selector);
@@ -280,7 +278,6 @@ contract PlagueGameTest is Test {
 
         uint256[] memory winners = _fetchDoctorsToStatus(PlagueGame.Status.Healthy);
 
-        // assertLe(winners.length, playerNumberToEndGame, "There should be no more then 10 winners");
         assertGt(winners.length, 0, "There should at least 1 winner");
     }
 
@@ -300,12 +297,8 @@ contract PlagueGameTest is Test {
                 }
 
                 _cureDoctor(indexSearchForInfected);
-
-                // console.log(lastPotionUsed);
             }
         }
-
-        // console.log("end round");
     }
 
     function _cureDoctor(uint256 _doctorId) private {
@@ -358,17 +351,6 @@ contract PlagueGameTest is Test {
         vm.expectRevert(TooManyInitialized.selector);
         plagueGame.initializeGame(collectionSize / 10);
     }
-
-    // function _loadWinners() private returns (uint256[] memory winners) {
-    //     for (uint256 i = 0; i < collectionSize; i++) {
-    //         if (plagueGame.villagerStatus(i) == PlagueGame.Status.Healthy) {
-    //             doctorsArray.push(i);
-    //         }
-    //     }
-
-    //     winners = doctorsArray;
-    //     doctorsArray = new uint256[](0);
-    // }
 
     function _gameSetup() private {
         plagueGame = new PlagueGame(
