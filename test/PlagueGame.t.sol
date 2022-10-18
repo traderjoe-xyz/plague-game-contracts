@@ -12,7 +12,7 @@ error OnlyCoordinatorCanFulfill(address have, address want);
 contract PlagueGameTest is Test {
     // Collection configuration
     uint256 collectionSize = 1200;
-    uint256 roundNumber = 12;
+    uint256 epochNumber = 12;
     uint256 playerNumberToEndGame = 10;
     uint256[] infectedDoctorsPerEpoch =
         [2_000, 2_000, 2_000, 3_000, 3_000, 3_000, 4_000, 4_000, 4_000, 5_000, 5_000, 5_000];
@@ -26,7 +26,7 @@ contract PlagueGameTest is Test {
     // VRF configuration
     uint64 subscriptionId;
     bytes32 keyHash = "";
-    uint32 maxGas = 1_500_000;
+    uint32 maxGas = 1_800_000;
     uint256 s_nextRequestId = 1;
     uint96 lastSubscriptionBalance = 100 ether;
 
@@ -34,7 +34,7 @@ contract PlagueGameTest is Test {
     address BOB = address(0xb0b);
 
     PlagueGame plagueGame;
-    ERC721Mock villagers;
+    ERC721Mock doctors;
     ERC721Mock potions;
     VRFCoordinatorV2Mock coordinator;
 
@@ -43,11 +43,11 @@ contract PlagueGameTest is Test {
     uint256[] doctorsArray;
 
     function setUp() public {
-        villagers = new ERC721Mock();
+        doctors = new ERC721Mock();
         potions = new ERC721Mock();
         coordinator = new VRFCoordinatorV2Mock(0,1);
 
-        villagers.mint(collectionSize);
+        doctors.mint(collectionSize);
         potions.mint(collectionSize);
 
         // VRF setup
@@ -114,7 +114,7 @@ contract PlagueGameTest is Test {
 
     function testGame() public {
         assertEq(plagueGame.currentEpoch(), 0, "starting epoch should be 0");
-        assertEq(plagueGame.getHealthyVillagersNumber(), collectionSize, "all villagers should be healthy");
+        assertEq(plagueGame.getHealthyDoctorsNumber(), collectionSize, "all doctors should be healthy");
         assertEq(plagueGame.gameStarted(), false, "game should not be started");
         assertEq(plagueGame.isGameOver(), false, "game should not be over");
 
@@ -127,9 +127,9 @@ contract PlagueGameTest is Test {
 
         assertEq(plagueGame.gameStarted(), true, "game should be started");
 
-        for (uint256 i = 0; i < roundNumber; ++i) {
-            uint256 healthyVillagersEndOfRound = plagueGame.getHealthyVillagersNumber();
-            uint256[] memory deadVillagersEndOfRound = _fetchDoctorsToStatus(PlagueGame.Status.Dead);
+        for (uint256 i = 0; i < epochNumber; ++i) {
+            uint256 healthyDoctorsEndOfEpoch = plagueGame.getHealthyDoctorsNumber();
+            uint256[] memory deadDoctorsEndOfEpoch = _fetchDoctorsToStatus(PlagueGame.Status.Dead);
 
             plagueGame.startEpoch();
 
@@ -139,36 +139,36 @@ contract PlagueGameTest is Test {
             vm.expectRevert(VRFResponseMissing.selector);
             plagueGame.startEpoch();
 
-            uint256 expectedInfections = healthyVillagersEndOfRound * infectedDoctorsPerEpoch[i] / 10_000;
+            uint256 expectedInfections = healthyDoctorsEndOfEpoch * infectedDoctorsPerEpoch[i] / 10_000;
             assertEq(
-                healthyVillagersEndOfRound - plagueGame.getHealthyVillagersNumber(),
+                healthyDoctorsEndOfEpoch - plagueGame.getHealthyDoctorsNumber(),
                 expectedInfections,
-                "correct number of the villagers should have been removed from the healthy villagers set"
+                "correct number of the doctors should have been removed from the healthy doctors set"
             );
             assertEq(
                 plagueGame.infectedDoctorsPerEpoch(i + 1),
                 expectedInfections,
-                "correct number of the villagers should be infected"
+                "correct number of the doctors should be infected"
             );
             assertEq(
                 _fetchDoctorsToStatus(PlagueGame.Status.Infected).length,
                 expectedInfections,
-                "The expected number of villagers is infected"
+                "The expected number of doctors is infected"
             );
 
             uint256 doctorsToCure = curedDoctorsPerEpoch[i];
             _cureDoctors(doctorsToCure);
 
             assertEq(
-                healthyVillagersEndOfRound - plagueGame.getHealthyVillagersNumber(),
+                healthyDoctorsEndOfEpoch - plagueGame.getHealthyDoctorsNumber(),
                 expectedInfections - doctorsToCure,
-                "Doctors should have been put back in the healthy villagers set"
+                "Doctors should have been put back in the healthy doctors set"
             );
 
             assertEq(
                 _fetchDoctorsToStatus(PlagueGame.Status.Infected).length,
                 expectedInfections - doctorsToCure,
-                "The expected number of villagers is infected"
+                "The expected number of doctors is infected"
             );
 
             uint256[] memory deadDoctors = _fetchDoctorsToStatus(PlagueGame.Status.Dead);
@@ -189,7 +189,7 @@ contract PlagueGameTest is Test {
             skip(epochDuration);
             plagueGame.endEpoch();
 
-            if (i == roundNumber - 1) {
+            if (i == epochNumber - 1) {
                 vm.expectRevert(GameIsClosed.selector);
                 plagueGame.endEpoch();
 
@@ -211,19 +211,19 @@ contract PlagueGameTest is Test {
             }
 
             assertEq(
-                _fetchDoctorsToStatus(PlagueGame.Status.Dead).length - deadVillagersEndOfRound.length,
+                _fetchDoctorsToStatus(PlagueGame.Status.Dead).length - deadDoctorsEndOfEpoch.length,
                 expectedInfections - doctorsToCure,
-                "The expected number of villagers is dead"
+                "The expected number of doctors is dead"
             );
 
-            assertEq(_fetchDoctorsToStatus(PlagueGame.Status.Infected).length, 0, "No more infected villagers");
+            assertEq(_fetchDoctorsToStatus(PlagueGame.Status.Infected).length, 0, "No more infected doctors");
         }
     }
 
     function testPrizeWithdrawal() public {
         testFullGame(0);
 
-        uint256 aliveDoctors = plagueGame.getHealthyVillagersNumber();
+        uint256 aliveDoctors = plagueGame.getHealthyDoctorsNumber();
         uint256[] memory winners = _fetchDoctorsToStatus(PlagueGame.Status.Healthy);
 
         assertEq(winners.length, aliveDoctors, "The winners array should be the same size as the number of winners");
@@ -263,15 +263,15 @@ contract PlagueGameTest is Test {
         plagueGame.startGame();
         _mockVRFResponse();
 
-        for (uint256 i = 0; i < roundNumber; i++) {
+        for (uint256 i = 0; i < epochNumber; i++) {
             plagueGame.startEpoch();
             _cureRandomDoctors(_randomnessSeed);
             skip(epochDuration);
             plagueGame.endEpoch();
-            if (plagueGame.getHealthyVillagersNumber() <= 10) {
+            if (plagueGame.getHealthyDoctorsNumber() <= 10) {
                 break;
             }
-            if (i != roundNumber - 1) {
+            if (i != epochNumber - 1) {
                 _mockVRFResponse();
             }
         }
@@ -292,7 +292,7 @@ contract PlagueGameTest is Test {
         uint256 indexSearchForInfected;
         for (uint256 i = 0; i < _numberCured; i++) {
             if (lastPotionUsed < collectionSize * 8_000 / 10_000) {
-                while (plagueGame.villagerStatus(indexSearchForInfected) != PlagueGame.Status.Infected) {
+                while (plagueGame.doctorStatus(indexSearchForInfected) != PlagueGame.Status.Infected) {
                     ++indexSearchForInfected;
                 }
 
@@ -302,7 +302,7 @@ contract PlagueGameTest is Test {
     }
 
     function _cureDoctor(uint256 _doctorId) private {
-        address owner = villagers.ownerOf(_doctorId);
+        address owner = doctors.ownerOf(_doctorId);
         potions.transferFrom(address(this), owner, lastPotionUsed);
 
         vm.startPrank(owner);
@@ -332,14 +332,14 @@ contract PlagueGameTest is Test {
         lastSubscriptionBalance = vrfBalance;
     }
 
-    function _fetchDoctorsToStatus(PlagueGame.Status _status) private returns (uint256[] memory doctors) {
+    function _fetchDoctorsToStatus(PlagueGame.Status _status) private returns (uint256[] memory doctorsFromStatus) {
         for (uint256 i = 0; i < collectionSize; i++) {
-            if (plagueGame.villagerStatus(i) == _status) {
+            if (plagueGame.doctorStatus(i) == _status) {
                 doctorsArray.push(i);
             }
         }
 
-        doctors = doctorsArray;
+        doctorsFromStatus = doctorsArray;
         doctorsArray = new uint256[](0);
     }
 
@@ -354,7 +354,7 @@ contract PlagueGameTest is Test {
 
     function _gameSetup() private {
         plagueGame = new PlagueGame(
-            villagers,
+            doctors,
             potions,
             infectedDoctorsPerEpoch,
             playerNumberToEndGame,
