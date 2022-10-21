@@ -256,7 +256,7 @@ contract PlagueGame is Ownable, VRFConsumerBaseV2 {
 
         emit DoctorsDeadThisEpoch(currentEpoch, deads);
 
-        if (healthyDoctors.length() <= 10 || currentEpoch == 12) {
+        if (healthyDoctors.length() <= playerNumberToEndGame || currentEpoch == totalEpochNumber) {
             isGameOver = true;
             emit GameOver();
             return;
