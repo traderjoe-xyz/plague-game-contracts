@@ -21,6 +21,7 @@ error UpdateToSameStatus();
 error InvalidRequestId();
 error VRFResponseMissing();
 error VRFRequestAlreadyAsked();
+error CantAddPrizeIfGameIsOver();
 error NotAWinner();
 error WithdrawalClosed();
 error FundsTransferFailed();
@@ -228,16 +229,20 @@ contract PlagueGame is Ownable, VRFConsumerBaseV2 {
         epochStartTime = block.timestamp;
 
         uint256 healthyDoctorsNumber = healthyDoctors.length();
-        uint256 toMakeSick = healthyDoctorsNumber * _getinfectionRate(currentEpoch) / BASIS_POINT;
+        uint256 currentEpochCached = currentEpoch;
+
+        uint256 toMakeSick = healthyDoctorsNumber * _getinfectionRate(currentEpochCached) / BASIS_POINT;
 
         _infectRandomDoctors(healthyDoctorsNumber, toMakeSick, randomNumbers);
 
-        emit DoctorsInfectedThisEpoch(currentEpoch, toMakeSick);
+        emit DoctorsInfectedThisEpoch(currentEpochCached, toMakeSick);
     }
 
     /// @notice Ends the current epoch if the conditions are met
     function endEpoch() external gameOn {
-        if (epochEnded[currentEpoch] == true) {
+        uint256 currentEpochCached = currentEpoch;
+
+        if (epochEnded[currentEpochCached] == true) {
             revert EpochAlreadyEnded();
         }
 
@@ -245,21 +250,19 @@ contract PlagueGame is Ownable, VRFConsumerBaseV2 {
             revert EpochNotReadyToEnd();
         }
 
-        epochEnded[currentEpoch] = true;
+        epochEnded[currentEpochCached] = true;
 
         uint256 deads;
         for (uint256 i = 0; i < doctorNumber; ++i) {
             if (doctorStatus[i] == Status.Infected) {
                 doctorStatus[i] = Status.Dead;
                 ++deads;
-                // emit Dead(i);
+                emit Dead(i);
             }
         }
 
-        deadDoctorsPerEpoch[currentEpoch] = deads;
-        emit DoctorsDeadThisEpoch(currentEpoch, deads);
-
-        // console.log(currentEpoch);
+        deadDoctorsPerEpoch[currentEpochCached] = deads;
+        emit DoctorsDeadThisEpoch(currentEpochCached, deads);
 
         if (healthyDoctors.length() <= playerNumberToEndGame) {
             isGameOver = true;
@@ -314,12 +317,29 @@ contract PlagueGame is Ownable, VRFConsumerBaseV2 {
         emit PrizeWithdrawn(_doctorId, prize);
     }
 
+    ///@notice Allows the contract owner to withdraw the funds
+    function withdrawFunds() external onlyOwner {
+        (bool success,) = payable(msg.sender).call{value: address(this).balance}("");
+
+        if (!success) {
+            revert FundsTransferFailed();
+        }
+    }
+
     /// @dev Send AVAX to the contract to increase the prize pot
+    /// Only possible when the game is still on, to avoid uneven prize distribution
     receive() external payable {
+        if (isGameOver) {
+            revert CantAddPrizeIfGameIsOver();
+        }
         prizePot += msg.value;
         emit PrizePotIncreased(msg.value);
     }
 
+    /// @dev Fetches the right infection rate for the current epoch
+    /// If we passed the last defined epoch, we use the last used rate
+    /// @param _epoch Epoch
+    /// @return infectionRate Infection rate for the considered epoch
     function _getinfectionRate(uint256 _epoch) internal view returns (uint256 infectionRate) {
         infectionRate = _epoch > totalDefinedEpochNumber
             ? infectionPercentagePerEpoch[totalDefinedEpochNumber - 1]
