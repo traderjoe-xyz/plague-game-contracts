@@ -216,6 +216,12 @@ contract PlagueGameTest is Test {
                 "The expected number of doctors is dead"
             );
 
+            assertEq(
+                plagueGame.deadDoctorsPerEpoch(plagueGame.currentEpoch()),
+                expectedInfections - doctorsToCure,
+                "The expected number of doctors is dead"
+            );
+
             assertEq(_fetchDoctorsToStatus(PlagueGame.Status.Infected).length, 0, "No more infected doctors");
         }
     }

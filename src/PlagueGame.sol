@@ -72,8 +72,10 @@ contract PlagueGame is Ownable, VRFConsumerBaseV2 {
     /// @notice Status of the doctors
     mapping(uint256 => Status) public doctorStatus;
 
-    /// @notice Stores the number of doctors infected each epoch
+    /// @notice Stores the number of doctors infected each epoch. This is purely for the front-end
     mapping(uint256 => uint256) public infectedDoctorsPerEpoch;
+    /// @notice Stores the number of dead doctors each epoch. This is purely for the front-end
+    mapping(uint256 => uint256) public deadDoctorsPerEpoch;
     /// @notice VRF request IDs for each epoch
     mapping(uint256 => uint256) public epochVRFRequest;
     /// @notice VRF response for each epoch
@@ -254,6 +256,7 @@ contract PlagueGame is Ownable, VRFConsumerBaseV2 {
             }
         }
 
+        deadDoctorsPerEpoch[currentEpoch] = deads;
         emit DoctorsDeadThisEpoch(currentEpoch, deads);
 
         if (healthyDoctors.length() <= playerNumberToEndGame || currentEpoch == totalEpochNumber) {
