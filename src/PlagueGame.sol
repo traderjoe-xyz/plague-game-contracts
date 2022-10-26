@@ -3,9 +3,10 @@ pragma solidity ^0.8.13;
 
 import "openzeppelin/access/Ownable.sol";
 import "openzeppelin/utils/structs/EnumerableSet.sol";
-import "openzeppelin/token/ERC721//extensions/IERC721Enumerable.sol";
 import "chainlink/VRFConsumerBaseV2.sol";
 import "chainlink/interfaces/VRFCoordinatorV2Interface.sol";
+
+import "./IPlagueGame.sol";
 
 error InvalidInfectionPercentage();
 error TooManyInitialized();
@@ -26,65 +27,42 @@ error NotAWinner();
 error WithdrawalClosed();
 error FundsTransferFailed();
 
-contract PlagueGame is Ownable, VRFConsumerBaseV2 {
+contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
     using EnumerableSet for EnumerableSet.UintSet;
 
-    /// Game events
-    event GameStarted();
-    event RandomWordsFulfilled(uint256 epoch, uint256 requestId);
-    event DoctorsInfectedThisEpoch(uint256 indexed epoch, uint256 infectedDoctors);
-    event DoctorsDeadThisEpoch(uint256 indexed epoch, uint256 deadDoctors);
-    event GameOver();
-    event PrizeWithdrawalAllowed(bool newValue);
-    event PrizeWithdrawn(uint256 indexed doctorId, uint256 prize);
-    event PrizePotIncreased(uint256 amount);
-    event FundsEmergencyWithdraw(uint256 amount);
-
-    /// Individual events
-    event Sick(uint256 indexed doctorId);
-    event Cured(uint256 indexed doctorId);
-    event Dead(uint256 indexed doctorId);
-
-    /// @dev Different statuses a doctor can have
-    enum Status {
-        Dead,
-        Healthy,
-        Infected
-    }
-
     /// @notice Address of the doctor collection contract
-    IERC721Enumerable public immutable doctors;
+    IERC721Enumerable public immutable override doctors;
     /// @notice Address of the potion collection contract
-    IERC721Enumerable public immutable potions;
+    IERC721Enumerable public immutable override potions;
     /// @notice Number of doctors still alive triggering the end of the game
-    uint256 public immutable playerNumberToEndGame;
+    uint256 public immutable override playerNumberToEndGame;
     /// @notice Percentage of doctors that will  be infected each epoch
-    uint256[] public infectionPercentagePerEpoch;
+    uint256[] public override infectionPercentagePerEpoch;
     /// @notice Total number of epochs
     uint256 private immutable totalDefinedEpochNumber;
     /// @dev Number of doctors in the collection
     uint256 private immutable doctorNumber;
 
     /// @notice Current epoch. Epoch is incremented at the beginning of each epoch
-    uint256 public currentEpoch;
+    uint256 public override currentEpoch;
     /// @notice Duration of each epoch in seconds
-    uint256 public epochDuration;
+    uint256 public override epochDuration;
     /// @notice Start time of the latest epoch
-    uint256 public epochStartTime;
+    uint256 public override epochStartTime;
 
     /// @notice Status of the doctors
-    mapping(uint256 => Status) public doctorStatus;
+    mapping(uint256 => Status) public override doctorStatus;
 
     /// @notice Stores the number of doctors infected each epoch. This is purely for the front-end
-    mapping(uint256 => uint256) public infectedDoctorsPerEpoch;
+    mapping(uint256 => uint256) public override infectedDoctorsPerEpoch;
     /// @notice Stores the number of dead doctors each epoch. This is purely for the front-end
-    mapping(uint256 => uint256) public deadDoctorsPerEpoch;
-    /// @notice VRF request IDs for each epoch
-    mapping(uint256 => uint256) public epochVRFRequest;
-    /// @notice VRF response for each epoch
-    mapping(uint256 => uint256[]) public epochVRFNumber;
+    mapping(uint256 => uint256) public override deadDoctorsPerEpoch;
     /// @notice Stores if a user already claimed his prize for a doctors he owns
-    mapping(uint256 => bool) public withdrewPrize;
+    mapping(uint256 => bool) public override withdrewPrize;
+    /// @notice VRF request IDs for each epoch
+    mapping(uint256 => uint256) private epochVRFRequest;
+    /// @notice VRF response for each epoch
+    mapping(uint256 => uint256[]) private epochVRFNumber;
     /// @dev Stores if an epoch has started
     mapping(uint256 => bool) private epochEnded;
 
@@ -92,13 +70,13 @@ contract PlagueGame is Ownable, VRFConsumerBaseV2 {
     EnumerableSet.UintSet private healthyDoctors;
 
     /// @notice True is the game is over
-    bool public isGameOver;
+    bool public override isGameOver;
     /// @notice True is the game started
-    bool public isGameStarted;
+    bool public override isGameStarted;
     /// @notice Prize pot that will be distributed to the winners at the end of the game
-    uint256 public prizePot;
+    uint256 public override prizePot;
     /// @notice States if the withdrawal is open. Set by the contract owner
-    bool public prizeWithdrawalAllowed;
+    bool public override prizeWithdrawalAllowed;
 
     /// @dev Address of the VRF coordinator
     VRFCoordinatorV2Interface private immutable vrfCoordinator;
@@ -168,14 +146,14 @@ contract PlagueGame is Ownable, VRFConsumerBaseV2 {
 
     /// @notice Gets the number of healthy doctors
     /// @return healthyDoctorsNumber Number of healthy doctors
-    function getHealthyDoctorsNumber() external view returns (uint256 healthyDoctorsNumber) {
+    function getHealthyDoctorsNumber() external view override returns (uint256 healthyDoctorsNumber) {
         healthyDoctorsNumber = healthyDoctors.length();
     }
 
     /// @notice Initializes the game
     /// @dev This function is very expensive is gas, that's why it needs to be called several times
     /// @param _amount Amount of doctors to initialize
-    function initializeGame(uint256 _amount) external {
+    function initializeGame(uint256 _amount) external override {
         uint256 lastDoctorUpdated = healthyDoctors.length();
 
         if (lastDoctorUpdated + _amount > doctorNumber) {
@@ -191,7 +169,7 @@ contract PlagueGame is Ownable, VRFConsumerBaseV2 {
 
     /// @notice Starts and pauses the prize withdrawal
     /// @param _status True to allow the withdrawal of the prize
-    function allowPrizeWithdraw(bool _status) external onlyOwner {
+    function allowPrizeWithdraw(bool _status) external override onlyOwner {
         if (!isGameOver) {
             revert GameNotOver();
         }
@@ -206,7 +184,7 @@ contract PlagueGame is Ownable, VRFConsumerBaseV2 {
     }
 
     /// @notice Starts the game
-    function startGame() external onlyOwner {
+    function startGame() external override onlyOwner {
         if (isGameStarted) {
             revert GameAlreadyStarted();
         }
@@ -222,7 +200,7 @@ contract PlagueGame is Ownable, VRFConsumerBaseV2 {
     }
 
     /// @notice Starts a new epoch if the conditions are met
-    function startEpoch() external gameOn {
+    function startEpoch() external override gameOn {
         ++currentEpoch;
 
         uint256[] memory randomNumbers = epochVRFNumber[epochVRFRequest[currentEpoch]];
@@ -243,7 +221,7 @@ contract PlagueGame is Ownable, VRFConsumerBaseV2 {
     }
 
     /// @notice Ends the current epoch if the conditions are met
-    function endEpoch() external gameOn {
+    function endEpoch() external override gameOn {
         uint256 currentEpochCached = currentEpoch;
 
         if (epochEnded[currentEpochCached] == true) {
@@ -281,7 +259,7 @@ contract PlagueGame is Ownable, VRFConsumerBaseV2 {
     /// @dev User needs to have given approval to the contract
     /// @param _doctorId ID of the doctor to cure
     /// @param _potionId ID of the potion to use
-    function drinkPotion(uint256 _doctorId, uint256 _potionId) external {
+    function drinkPotion(uint256 _doctorId, uint256 _potionId) external override {
         if (doctorStatus[_doctorId] != Status.Infected) {
             revert DoctorNotInfected();
         }
@@ -296,7 +274,7 @@ contract PlagueGame is Ownable, VRFConsumerBaseV2 {
 
     /// @notice Withdraws the prize for a winning doctor
     /// @param _doctorId ID of the doctor to withdraw the prize for
-    function withdrawPrize(uint256 _doctorId) external {
+    function withdrawPrize(uint256 _doctorId) external override {
         if (!prizeWithdrawalAllowed) {
             revert WithdrawalClosed();
         }
@@ -322,7 +300,7 @@ contract PlagueGame is Ownable, VRFConsumerBaseV2 {
     }
 
     ///@notice Allows the contract owner to withdraw the funds
-    function withdrawFunds() external onlyOwner {
+    function withdrawFunds() external override onlyOwner {
         (bool success,) = payable(msg.sender).call{value: address(this).balance}("");
 
         if (!success) {

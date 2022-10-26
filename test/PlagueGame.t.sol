@@ -4,6 +4,7 @@ pragma solidity ^0.8.13;
 import "forge-std/Test.sol";
 
 import "src/PlagueGame.sol";
+import "src/IPlagueGame.sol";
 import "./mocks/ERC721.sol";
 import "chainlink/mocks/VRFCoordinatorV2Mock.sol";
 
@@ -129,7 +130,7 @@ contract PlagueGameTest is Test {
 
         for (uint256 i = 0; i < epochNumber; ++i) {
             uint256 healthyDoctorsEndOfEpoch = plagueGame.getHealthyDoctorsNumber();
-            uint256[] memory deadDoctorsEndOfEpoch = _fetchDoctorsToStatus(PlagueGame.Status.Dead);
+            uint256[] memory deadDoctorsEndOfEpoch = _fetchDoctorsToStatus(IPlagueGame.Status.Dead);
 
             plagueGame.startEpoch();
 
@@ -151,7 +152,7 @@ contract PlagueGameTest is Test {
                 "correct number of the doctors should be infected"
             );
             assertEq(
-                _fetchDoctorsToStatus(PlagueGame.Status.Infected).length,
+                _fetchDoctorsToStatus(IPlagueGame.Status.Infected).length,
                 expectedInfections,
                 "The expected number of doctors is infected"
             );
@@ -166,18 +167,18 @@ contract PlagueGameTest is Test {
             );
 
             assertEq(
-                _fetchDoctorsToStatus(PlagueGame.Status.Infected).length,
+                _fetchDoctorsToStatus(IPlagueGame.Status.Infected).length,
                 expectedInfections - doctorsToCure,
                 "The expected number of doctors is infected"
             );
 
-            uint256[] memory deadDoctors = _fetchDoctorsToStatus(PlagueGame.Status.Dead);
+            uint256[] memory deadDoctors = _fetchDoctorsToStatus(IPlagueGame.Status.Dead);
             for (uint256 j = 0; j < deadDoctors.length; j++) {
                 vm.expectRevert(DoctorNotInfected.selector);
                 plagueGame.drinkPotion(deadDoctors[j], lastPotionUsed);
             }
 
-            uint256[] memory healthyDoctors = _fetchDoctorsToStatus(PlagueGame.Status.Healthy);
+            uint256[] memory healthyDoctors = _fetchDoctorsToStatus(IPlagueGame.Status.Healthy);
             for (uint256 j = 0; j < healthyDoctors.length; j++) {
                 vm.expectRevert(DoctorNotInfected.selector);
                 plagueGame.drinkPotion(healthyDoctors[j], lastPotionUsed);
@@ -215,7 +216,7 @@ contract PlagueGameTest is Test {
             }
 
             assertEq(
-                _fetchDoctorsToStatus(PlagueGame.Status.Dead).length - deadDoctorsEndOfEpoch.length,
+                _fetchDoctorsToStatus(IPlagueGame.Status.Dead).length - deadDoctorsEndOfEpoch.length,
                 expectedInfections - doctorsToCure,
                 "The expected number of doctors is dead"
             );
@@ -226,7 +227,7 @@ contract PlagueGameTest is Test {
                 "The expected number of doctors is dead"
             );
 
-            assertEq(_fetchDoctorsToStatus(PlagueGame.Status.Infected).length, 0, "No more infected doctors");
+            assertEq(_fetchDoctorsToStatus(IPlagueGame.Status.Infected).length, 0, "No more infected doctors");
         }
     }
 
@@ -234,7 +235,7 @@ contract PlagueGameTest is Test {
         testFullGame(0);
 
         uint256 aliveDoctors = plagueGame.getHealthyDoctorsNumber();
-        uint256[] memory winners = _fetchDoctorsToStatus(PlagueGame.Status.Healthy);
+        uint256[] memory winners = _fetchDoctorsToStatus(IPlagueGame.Status.Healthy);
 
         assertEq(winners.length, aliveDoctors, "The winners array should be the same size as the number of winners");
         assertEq(prizePot, address(plagueGame).balance, "The prize pot should be equal to the contract balance");
@@ -285,7 +286,7 @@ contract PlagueGameTest is Test {
             _mockVRFResponse();
         }
 
-        uint256[] memory winners = _fetchDoctorsToStatus(PlagueGame.Status.Healthy);
+        uint256[] memory winners = _fetchDoctorsToStatus(IPlagueGame.Status.Healthy);
 
         assertGt(winners.length, 0, "There should at least 1 winner");
 
@@ -303,7 +304,7 @@ contract PlagueGameTest is Test {
         uint256 indexSearchForInfected;
         for (uint256 i = 0; i < _numberCured; i++) {
             if (lastPotionUsed < collectionSize * 8_000 / 10_000) {
-                while (plagueGame.doctorStatus(indexSearchForInfected) != PlagueGame.Status.Infected) {
+                while (plagueGame.doctorStatus(indexSearchForInfected) != IPlagueGame.Status.Infected) {
                     ++indexSearchForInfected;
                 }
 
@@ -343,7 +344,7 @@ contract PlagueGameTest is Test {
         lastSubscriptionBalance = vrfBalance;
     }
 
-    function _fetchDoctorsToStatus(PlagueGame.Status _status) private returns (uint256[] memory doctorsFromStatus) {
+    function _fetchDoctorsToStatus(IPlagueGame.Status _status) private returns (uint256[] memory doctorsFromStatus) {
         for (uint256 i = 0; i < collectionSize; i++) {
             if (plagueGame.doctorStatus(i) == _status) {
                 doctorsArray.push(i);
