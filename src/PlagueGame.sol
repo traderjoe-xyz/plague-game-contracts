@@ -58,7 +58,7 @@ contract PlagueGame is Ownable, VRFConsumerBaseV2 {
     /// @notice Percentage of doctors that will  be infected each epoch
     uint256[] public infectionPercentagePerEpoch;
     /// @notice Total number of epochs
-    uint256 public immutable totalEpochNumber;
+    uint256 private immutable totalDefinedEpochNumber;
     /// @dev Number of doctors in the collection
     uint256 private immutable doctorNumber;
 
@@ -154,7 +154,7 @@ contract PlagueGame is Ownable, VRFConsumerBaseV2 {
         playerNumberToEndGame = _playerNumberToEndGame;
         potions = _potions;
         infectionPercentagePerEpoch = _infectionPercentagePerEpoch;
-        totalEpochNumber = _infectionPercentagePerEpoch.length;
+        totalDefinedEpochNumber = _infectionPercentagePerEpoch.length;
         epochDuration = _epochDuration;
 
         // VRF setup
@@ -228,7 +228,7 @@ contract PlagueGame is Ownable, VRFConsumerBaseV2 {
         epochStartTime = block.timestamp;
 
         uint256 healthyDoctorsNumber = healthyDoctors.length();
-        uint256 toMakeSick = healthyDoctorsNumber * infectionPercentagePerEpoch[currentEpoch - 1] / BASIS_POINT;
+        uint256 toMakeSick = healthyDoctorsNumber * _getinfectionRate(currentEpoch) / BASIS_POINT;
 
         _infectRandomDoctors(healthyDoctorsNumber, toMakeSick, randomNumbers);
 
@@ -252,14 +252,16 @@ contract PlagueGame is Ownable, VRFConsumerBaseV2 {
             if (doctorStatus[i] == Status.Infected) {
                 doctorStatus[i] = Status.Dead;
                 ++deads;
-                emit Dead(i);
+                // emit Dead(i);
             }
         }
 
         deadDoctorsPerEpoch[currentEpoch] = deads;
         emit DoctorsDeadThisEpoch(currentEpoch, deads);
 
-        if (healthyDoctors.length() <= playerNumberToEndGame || currentEpoch == totalEpochNumber) {
+        // console.log(currentEpoch);
+
+        if (healthyDoctors.length() <= playerNumberToEndGame) {
             isGameOver = true;
             emit GameOver();
             return;
@@ -316,6 +318,12 @@ contract PlagueGame is Ownable, VRFConsumerBaseV2 {
     receive() external payable {
         prizePot += msg.value;
         emit PrizePotIncreased(msg.value);
+    }
+
+    function _getinfectionRate(uint256 _epoch) internal view returns (uint256 infectionRate) {
+        infectionRate = _epoch > totalDefinedEpochNumber
+            ? infectionPercentagePerEpoch[totalDefinedEpochNumber - 1]
+            : infectionPercentagePerEpoch[_epoch - 1];
     }
 
     /// @dev Loops through the healthy doctors and infects them until
@@ -384,7 +392,7 @@ contract PlagueGame is Ownable, VRFConsumerBaseV2 {
             revert VRFRequestAlreadyAsked();
         }
 
-        uint256 infectedDoctors = healthyDoctors.length() * infectionPercentagePerEpoch[currentEpoch] / BASIS_POINT;
+        uint256 infectedDoctors = healthyDoctors.length() * _getinfectionRate(currentEpoch + 1) / BASIS_POINT;
         infectedDoctorsPerEpoch[currentEpoch + 1] = infectedDoctors;
         uint32 wordsNumber = uint32(infectedDoctors / 8 + 1);
 

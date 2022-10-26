@@ -14,7 +14,7 @@ contract PlagueGameTest is Test {
     uint256 collectionSize = 1200;
     uint256 epochNumber = 12;
     uint256 playerNumberToEndGame = 10;
-    uint256[] infectedDoctorsPerEpoch =
+    uint256[] infectionPercentagePerEpoch =
         [2_000, 2_000, 2_000, 3_000, 3_000, 3_000, 4_000, 4_000, 4_000, 5_000, 5_000, 5_000];
     uint256 epochDuration = 1 days;
     uint256 prizePot = 100 ether;
@@ -139,7 +139,7 @@ contract PlagueGameTest is Test {
             vm.expectRevert(VRFResponseMissing.selector);
             plagueGame.startEpoch();
 
-            uint256 expectedInfections = healthyDoctorsEndOfEpoch * infectedDoctorsPerEpoch[i] / 10_000;
+            uint256 expectedInfections = healthyDoctorsEndOfEpoch * _getInfectedDoctorsPerEpoch(i + 1) / 10_000;
             assertEq(
                 healthyDoctorsEndOfEpoch - plagueGame.getHealthyDoctorsNumber(),
                 expectedInfections,
@@ -189,20 +189,24 @@ contract PlagueGameTest is Test {
             skip(epochDuration);
             plagueGame.endEpoch();
 
-            if (i == epochNumber - 1) {
+            if (plagueGame.isGameOver()) {
                 vm.expectRevert(GameIsClosed.selector);
                 plagueGame.endEpoch();
 
                 vm.expectRevert(GameIsClosed.selector);
                 plagueGame.startEpoch();
 
-                assertEq(plagueGame.isGameOver(), true, "game should be over");
+                assertEq(plagueGame.isGameOver(), true, "Game should be over");
+
+                assertLe(healthyDoctors.length, playerNumberToEndGame, "There should be less than 10 players");
+
+                break;
             } else {
                 // Epoch can't be ended twice
                 vm.expectRevert(EpochAlreadyEnded.selector);
                 plagueGame.endEpoch();
 
-                assertEq(plagueGame.isGameOver(), false, "game should not be over");
+                assertEq(plagueGame.isGameOver(), false, "Game should not be over");
 
                 vm.expectRevert(VRFResponseMissing.selector);
                 plagueGame.startEpoch();
@@ -269,22 +273,23 @@ contract PlagueGameTest is Test {
         plagueGame.startGame();
         _mockVRFResponse();
 
-        for (uint256 i = 0; i < epochNumber; i++) {
+        while (true) {
             plagueGame.startEpoch();
             _cureRandomDoctors(_randomnessSeed);
             skip(epochDuration);
             plagueGame.endEpoch();
-            if (plagueGame.getHealthyDoctorsNumber() <= 10) {
+
+            if (plagueGame.isGameOver()) {
                 break;
             }
-            if (i != epochNumber - 1) {
-                _mockVRFResponse();
-            }
+            _mockVRFResponse();
         }
 
         uint256[] memory winners = _fetchDoctorsToStatus(PlagueGame.Status.Healthy);
 
         assertGt(winners.length, 0, "There should at least 1 winner");
+
+        assertLe(winners.length, playerNumberToEndGame, "There should no more than the expected amount of winners");
     }
 
     function _cureRandomDoctors(uint256 _randomnessSeed) private {
@@ -349,6 +354,13 @@ contract PlagueGameTest is Test {
         doctorsArray = new uint256[](0);
     }
 
+    function _getInfectedDoctorsPerEpoch(uint256 _epoch) private view returns (uint256 infectedDoctors) {
+        uint256 numberEpochSet = infectionPercentagePerEpoch.length;
+        infectedDoctors = _epoch > numberEpochSet
+            ? infectionPercentagePerEpoch[numberEpochSet - 1]
+            : infectionPercentagePerEpoch[_epoch - 1];
+    }
+
     function _initializeGame() private {
         for (uint256 i = 0; i < 10; i++) {
             plagueGame.initializeGame(collectionSize / 10);
@@ -362,7 +374,7 @@ contract PlagueGameTest is Test {
         plagueGame = new PlagueGame(
             doctors,
             potions,
-            infectedDoctorsPerEpoch,
+            infectionPercentagePerEpoch,
             playerNumberToEndGame,
             epochDuration,
             coordinator,
