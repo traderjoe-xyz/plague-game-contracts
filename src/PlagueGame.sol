@@ -35,8 +35,10 @@ contract PlagueGame is Ownable, VRFConsumerBaseV2 {
     event DoctorsInfectedThisEpoch(uint256 indexed epoch, uint256 infectedDoctors);
     event DoctorsDeadThisEpoch(uint256 indexed epoch, uint256 deadDoctors);
     event GameOver();
+    event PrizeWithdrawalAllowed(bool newValue);
     event PrizeWithdrawn(uint256 indexed doctorId, uint256 prize);
     event PrizePotIncreased(uint256 amount);
+    event FundsEmergencyWithdraw(uint256 amount);
 
     /// Individual events
     event Sick(uint256 indexed doctorId);
@@ -199,6 +201,8 @@ contract PlagueGame is Ownable, VRFConsumerBaseV2 {
         }
 
         prizeWithdrawalAllowed = _status;
+
+        emit PrizeWithdrawalAllowed(_status);
     }
 
     /// @notice Starts the game
@@ -324,6 +328,8 @@ contract PlagueGame is Ownable, VRFConsumerBaseV2 {
         if (!success) {
             revert FundsTransferFailed();
         }
+
+        emit FundsEmergencyWithdraw(address(this).balance);
     }
 
     /// @dev Send AVAX to the contract to increase the prize pot
