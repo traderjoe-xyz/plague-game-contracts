@@ -31,7 +31,7 @@ contract PlagueGame is Ownable, VRFConsumerBaseV2 {
     /// Game events
     event GameStarted();
     event RandomWordsFulfilled(uint256 epoch, uint256 requestId);
-    event DoctorsInfectedThisEpoch(uint256 indexed epoch, uint256 deadDoctors);
+    event DoctorsInfectedThisEpoch(uint256 indexed epoch, uint256 infectedDoctors);
     event DoctorsDeadThisEpoch(uint256 indexed epoch, uint256 deadDoctors);
     event GameOver();
     event PrizeWithdrawn(uint256 indexed doctorId, uint256 prize);
@@ -89,7 +89,7 @@ contract PlagueGame is Ownable, VRFConsumerBaseV2 {
     /// @notice True is the game is over
     bool public isGameOver;
     /// @notice True is the game started
-    bool public gameStarted;
+    bool public isGameStarted;
     /// @notice Prize pot that will be distributed to the winners at the end of the game
     uint256 public prizePot;
     /// @notice States if the withdrawal is open. Set by the contract owner
@@ -108,7 +108,7 @@ contract PlagueGame is Ownable, VRFConsumerBaseV2 {
     uint256 private constant BASIS_POINT = 10_000;
 
     modifier gameOn() {
-        if (isGameOver || !gameStarted) {
+        if (isGameOver || !isGameStarted) {
             revert GameIsClosed();
         }
         _;
@@ -200,7 +200,7 @@ contract PlagueGame is Ownable, VRFConsumerBaseV2 {
 
     /// @notice Starts the game
     function startGame() external onlyOwner {
-        if (gameStarted) {
+        if (isGameStarted) {
             revert GameAlreadyStarted();
         }
 
@@ -208,7 +208,7 @@ contract PlagueGame is Ownable, VRFConsumerBaseV2 {
             revert GameNotStarted();
         }
 
-        gameStarted = true;
+        isGameStarted = true;
         emit GameStarted();
 
         _requestRandomWords();

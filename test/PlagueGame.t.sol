@@ -115,7 +115,7 @@ contract PlagueGameTest is Test {
     function testGame() public {
         assertEq(plagueGame.currentEpoch(), 0, "starting epoch should be 0");
         assertEq(plagueGame.getHealthyDoctorsNumber(), collectionSize, "all doctors should be healthy");
-        assertEq(plagueGame.gameStarted(), false, "game should not be started");
+        assertEq(plagueGame.isGameStarted(), false, "game should not be started");
         assertEq(plagueGame.isGameOver(), false, "game should not be over");
 
         plagueGame.startGame();
@@ -125,7 +125,7 @@ contract PlagueGameTest is Test {
 
         _mockVRFResponse();
 
-        assertEq(plagueGame.gameStarted(), true, "game should be started");
+        assertEq(plagueGame.isGameStarted(), true, "game should be started");
 
         for (uint256 i = 0; i < epochNumber; ++i) {
             uint256 healthyDoctorsEndOfEpoch = plagueGame.getHealthyDoctorsNumber();
