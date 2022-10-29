@@ -43,7 +43,7 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
     /// @notice VRF request IDs for each epoch
     mapping(uint256 => uint256) private epochVRFRequest;
     /// @notice VRF response for each epoch
-    mapping(uint256 => uint256[]) private epochVRFNumber;
+    mapping(uint256 => uint256) private epochVRFNumber;
     /// @dev Stores if an epoch has ended
     mapping(uint256 => bool) private epochEnded;
 
@@ -132,7 +132,7 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
     }
 
     /// @notice Initializes the game
-    /// @dev This function is very expensive is gas, that's why it needs to be called several times
+    /// @dev This function is very expensive in gas, that's why it needs to be called several times
     /// @param _amount Amount of doctors to initialize
     function initializeGame(uint256 _amount) external override {
         uint256 lastDoctorUpdated = healthyDoctors.length();
@@ -184,8 +184,8 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
     function startEpoch() external override gameOn {
         ++currentEpoch;
 
-        uint256[] memory randomNumbers = epochVRFNumber[epochVRFRequest[currentEpoch]];
-        if (randomNumbers.length == 0) {
+        uint256 randomNumber = epochVRFNumber[epochVRFRequest[currentEpoch]];
+        if (randomNumber == 0) {
             revert VRFResponseMissing();
         }
 
@@ -195,8 +195,9 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
         uint256 currentEpochCached = currentEpoch;
 
         uint256 toMakeSick = healthyDoctorsNumber * _getinfectionRate(currentEpochCached) / BASIS_POINT;
+        infectedDoctorsPerEpoch[currentEpoch] = toMakeSick;
 
-        _infectRandomDoctors(healthyDoctorsNumber, toMakeSick, randomNumbers);
+        _infectRandomDoctors(healthyDoctorsNumber, toMakeSick, randomNumber);
 
         emit DoctorsInfectedThisEpoch(currentEpochCached, toMakeSick);
     }
@@ -316,20 +317,15 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
     /// @dev Each VRF random number is used 8 times
     /// @param _healthyDoctorsNumber Number of healthy doctors
     /// @param _toMakeSick Number of doctors to infect
-    /// @param _randomNumbers Random numbers provided by VRF to use to infect doctors
-    function _infectRandomDoctors(uint256 _healthyDoctorsNumber, uint256 _toMakeSick, uint256[] memory _randomNumbers)
-        private
-    {
+    /// @param _randomNumber Random number provided by VRF, used to infect doctors
+    function _infectRandomDoctors(uint256 _healthyDoctorsNumber, uint256 _toMakeSick, uint256 _randomNumber) private {
         uint256 madeSick;
         uint256 doctorId;
-        uint256 randomNumberId;
         uint256 healthyDoctorId;
-        uint256 randomNumberSliceOffset;
 
         while (madeSick < _toMakeSick) {
-            // Slices the random number to get the random doctor that will be infected
-            healthyDoctorId =
-                _sliceRandomNumber(_randomNumbers[randomNumberId], randomNumberSliceOffset++) % _healthyDoctorsNumber;
+            // Shuffles the random number to get a new one
+            healthyDoctorId = uint256(keccak256(abi.encode(_randomNumber, madeSick))) % _healthyDoctorsNumber;
             doctorId = healthyDoctors.at(healthyDoctorId);
 
             // Removing the doctors from the healthy doctors list and infecting him
@@ -338,12 +334,6 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
 
             --_healthyDoctorsNumber;
             ++madeSick;
-
-            // IF the random number has been used 8 times, we get a new one
-            if (randomNumberSliceOffset == 8) {
-                randomNumberSliceOffset = 0;
-                ++randomNumberId;
-            }
 
             emit Sick(doctorId);
         }
@@ -355,34 +345,14 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
         potions.transferFrom(msg.sender, address(0xdead), _potionId);
     }
 
-    /// @dev Slices a uint256 VRF random number to get a up to 8 uint32 random numbers
-    /// @param _randomNumber Random number to slice
-    /// @param _offset Offset of the slice
-    function _sliceRandomNumber(uint256 _randomNumber, uint256 _offset)
-        internal
-        pure
-        returns (uint32 slicedRadomNumber)
-    {
-        unchecked {
-            slicedRadomNumber = uint32(_randomNumber >> 32 * _offset);
-        }
-    }
-
-    /// @dev Random numbers will be sliced into uint32s to reduce the amount of random numbers needed
-    /// Since the array to select the random doctor will be at most 1k, uint32 numbers are enough
-    /// to get sufficiently random numbers
+    /// @dev Get one random number that will be shuffled as many times as needed to infect n random doctors
     function _requestRandomWords() private {
         // Extra safety check, but that shouldn't happen
-        if (epochVRFNumber[epochVRFRequest[currentEpoch + 1]].length != 0) {
+        if (epochVRFNumber[epochVRFRequest[currentEpoch + 1]] != 0) {
             revert VRFRequestAlreadyAsked();
         }
 
-        uint256 infectedDoctors = healthyDoctors.length() * _getinfectionRate(currentEpoch + 1) / BASIS_POINT;
-        infectedDoctorsPerEpoch[currentEpoch + 1] = infectedDoctors;
-        uint32 wordsNumber = infectedDoctors == 0 ? 0 : uint32((infectedDoctors - 1) / 8 + 1);
-
-        epochVRFRequest[currentEpoch + 1] =
-            vrfCoordinator.requestRandomWords(keyHash, subscriptionId, 3, maxGas, wordsNumber);
+        epochVRFRequest[currentEpoch + 1] = vrfCoordinator.requestRandomWords(keyHash, subscriptionId, 3, maxGas, 1);
     }
 
     /// @dev Callback function used by VRF Coordinator
@@ -394,11 +364,11 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
             revert InvalidRequestId();
         }
 
-        if (epochVRFNumber[epochVRFRequestCached].length != 0) {
+        if (epochVRFNumber[epochVRFRequestCached] != 0) {
             revert VRFRequestAlreadyAsked();
         }
 
-        epochVRFNumber[_requestId] = _randomWords;
+        epochVRFNumber[_requestId] = _randomWords[0];
 
         emit RandomWordsFulfilled(currentEpoch + 1, _requestId);
     }
