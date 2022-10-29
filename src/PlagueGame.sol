@@ -27,7 +27,7 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
     /// @notice Current epoch. Epoch is incremented at the beginning of each epoch
     uint256 public override currentEpoch;
     /// @notice Duration of each epoch in seconds
-    uint256 public override epochDuration;
+    uint256 public immutable override epochDuration;
     /// @notice Start time of the latest epoch
     uint256 public override epochStartTime;
 
@@ -62,11 +62,11 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
     /// @dev Address of the VRF coordinator
     VRFCoordinatorV2Interface private immutable vrfCoordinator;
     /// @dev VRF subscription ID
-    uint64 private subscriptionId;
+    uint64 private immutable subscriptionId;
     /// @dev VRF key hash
-    bytes32 private keyHash;
+    bytes32 private immutable keyHash;
     /// @dev Max gas used on the VRF callback
-    uint32 private maxGas;
+    uint32 private immutable maxGas;
 
     /// @dev Basis point to calulate percentages
     uint256 private constant BASIS_POINT = 10_000;
