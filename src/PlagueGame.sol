@@ -8,25 +8,6 @@ import "chainlink/interfaces/VRFCoordinatorV2Interface.sol";
 
 import "./IPlagueGame.sol";
 
-error InvalidInfectionPercentage();
-error TooManyInitialized();
-error CollectionTooBig();
-error GameAlreadyStarted();
-error GameNotStarted();
-error GameNotOver();
-error GameIsClosed();
-error EpochNotReadyToEnd();
-error EpochAlreadyEnded();
-error DoctorNotInfected();
-error UpdateToSameStatus();
-error InvalidRequestId();
-error VRFResponseMissing();
-error VRFRequestAlreadyAsked();
-error CantAddPrizeIfGameIsOver();
-error NotAWinner();
-error WithdrawalClosed();
-error FundsTransferFailed();
-
 contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
     using EnumerableSet for EnumerableSet.UintSet;
 
@@ -36,7 +17,7 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
     IERC721Enumerable public immutable override potions;
     /// @notice Number of doctors still alive triggering the end of the game
     uint256 public immutable override playerNumberToEndGame;
-    /// @notice Percentage of doctors that will  be infected each epoch
+    /// @notice Percentage of doctors that will be infected each epoch
     uint256[] public override infectionPercentagePerEpoch;
     /// @notice Total number of epochs
     uint256 private immutable totalDefinedEpochNumber;
@@ -53,9 +34,9 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
     /// @notice Status of the doctors
     mapping(uint256 => Status) public override doctorStatus;
 
-    /// @notice Stores the number of doctors infected each epoch. This is purely for the front-end
+    /// @notice Stores the number of infected doctors at each epoch. This is purely for the front-end
     mapping(uint256 => uint256) public override infectedDoctorsPerEpoch;
-    /// @notice Stores the number of dead doctors each epoch. This is purely for the front-end
+    /// @notice Stores the number of dead doctors at each epoch. This is purely for the front-end
     mapping(uint256 => uint256) public override deadDoctorsPerEpoch;
     /// @notice Stores if a user already claimed his prize for a doctors he owns
     mapping(uint256 => bool) public override withdrewPrize;
@@ -63,15 +44,15 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
     mapping(uint256 => uint256) private epochVRFRequest;
     /// @notice VRF response for each epoch
     mapping(uint256 => uint256[]) private epochVRFNumber;
-    /// @dev Stores if an epoch has started
+    /// @dev Stores if an epoch has ended
     mapping(uint256 => bool) private epochEnded;
 
     /// @dev List of healthy doctors
     EnumerableSet.UintSet private healthyDoctors;
 
-    /// @notice True is the game is over
+    /// @notice Whether the game is over (true), or not (false)
     bool public override isGameOver;
-    /// @notice True is the game started
+    /// @notice Whether the game has started (true), or not (false)
     bool public override isGameStarted;
     /// @notice Prize pot that will be distributed to the winners at the end of the game
     uint256 public override prizePot;
@@ -398,7 +379,7 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
 
         uint256 infectedDoctors = healthyDoctors.length() * _getinfectionRate(currentEpoch + 1) / BASIS_POINT;
         infectedDoctorsPerEpoch[currentEpoch + 1] = infectedDoctors;
-        uint32 wordsNumber = uint32(infectedDoctors / 8 + 1);
+        uint32 wordsNumber = infectedDoctors == 0 ? 0 : uint32((infectedDoctors - 1) / 8 + 1);
 
         epochVRFRequest[currentEpoch + 1] =
             vrfCoordinator.requestRandomWords(keyHash, subscriptionId, 3, maxGas, wordsNumber);
@@ -408,11 +389,12 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
     /// @param _requestId Request ID
     /// @param _randomWords Random numbers provided by VRF
     function fulfillRandomWords(uint256 _requestId, uint256[] memory _randomWords) internal override {
-        if (_requestId != epochVRFRequest[currentEpoch + 1]) {
+        uint256 epochVRFRequestCached = epochVRFRequest[currentEpoch + 1];
+        if (_requestId != epochVRFRequestCached) {
             revert InvalidRequestId();
         }
 
-        if (epochVRFNumber[epochVRFRequest[currentEpoch + 1]].length != 0) {
+        if (epochVRFNumber[epochVRFRequestCached].length != 0) {
             revert VRFRequestAlreadyAsked();
         }
 

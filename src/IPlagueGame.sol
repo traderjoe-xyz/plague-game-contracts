@@ -3,6 +3,25 @@ pragma solidity ^0.8.13;
 
 import "openzeppelin/token/ERC721//extensions/IERC721Enumerable.sol";
 
+error InvalidInfectionPercentage();
+error TooManyInitialized();
+error CollectionTooBig();
+error GameAlreadyStarted();
+error GameNotStarted();
+error GameNotOver();
+error GameIsClosed();
+error EpochNotReadyToEnd();
+error EpochAlreadyEnded();
+error DoctorNotInfected();
+error UpdateToSameStatus();
+error InvalidRequestId();
+error VRFResponseMissing();
+error VRFRequestAlreadyAsked();
+error CantAddPrizeIfGameIsOver();
+error NotAWinner();
+error WithdrawalClosed();
+error FundsTransferFailed();
+
 interface IPlagueGame {
     /// @dev Different statuses a doctor can have
     enum Status {
