@@ -19,8 +19,8 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
     uint256 public immutable override playerNumberToEndGame;
     /// @notice Percentage of doctors that will be infected each epoch
     uint256[] public override infectionPercentagePerEpoch;
-    /// @notice Total number of epochs
-    uint256 private immutable totalDefinedEpochNumber;
+    /// @notice Total number of epochs with a defined infection percentage. If the game lasts longer, the last percentage defined will be used
+    uint256 public immutable override totalDefinedEpochNumber;
     /// @dev Number of doctors in the collection
     uint256 private immutable doctorNumber;
 

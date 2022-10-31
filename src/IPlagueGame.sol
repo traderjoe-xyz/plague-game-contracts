@@ -51,6 +51,7 @@ interface IPlagueGame {
 
     function playerNumberToEndGame() external view returns (uint256);
     function infectionPercentagePerEpoch(uint256 epoch) external view returns (uint256);
+    function totalDefinedEpochNumber() external view returns (uint256);
 
     function currentEpoch() external view returns (uint256);
     function epochDuration() external view returns (uint256);
