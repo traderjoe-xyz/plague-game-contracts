@@ -195,6 +195,17 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
         uint256 currentEpochCached = currentEpoch;
 
         uint256 toMakeSick = healthyDoctorsNumber * _getinfectionRate(currentEpochCached) / BASIS_POINT;
+
+        // Need at least one doctor to be infected, otherwise the game will never end
+        if (toMakeSick == 0) {
+            toMakeSick = 1;
+        }
+
+        // Need at least one doctor left healthy, otherwise the game could end up with no winners
+        if (toMakeSick == healthyDoctorsNumber) {
+            toMakeSick -= 1;
+        }
+
         infectedDoctorsPerEpoch[currentEpoch] = toMakeSick;
 
         _infectRandomDoctors(healthyDoctorsNumber, toMakeSick, randomNumber);
