@@ -347,19 +347,21 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
 
     /// @dev Get one random number that will be shuffled as many times as needed to infect n random doctors
     function _requestRandomWords() private {
+        uint256 nextEpochCached = currentEpoch + 1;
         // Extra safety check, but that shouldn't happen
-        if (epochVRFNumber[epochVRFRequest[currentEpoch + 1]] != 0) {
+        if (epochVRFNumber[epochVRFRequest[nextEpochCached]] != 0) {
             revert VRFRequestAlreadyAsked();
         }
 
-        epochVRFRequest[currentEpoch + 1] = vrfCoordinator.requestRandomWords(keyHash, subscriptionId, 3, maxGas, 1);
+        epochVRFRequest[nextEpochCached] = vrfCoordinator.requestRandomWords(keyHash, subscriptionId, 3, maxGas, 1);
     }
 
     /// @dev Callback function used by VRF Coordinator
     /// @param _requestId Request ID
     /// @param _randomWords Random numbers provided by VRF
     function fulfillRandomWords(uint256 _requestId, uint256[] memory _randomWords) internal override {
-        uint256 epochVRFRequestCached = epochVRFRequest[currentEpoch + 1];
+        uint256 nextEpochCached = currentEpoch + 1;
+        uint256 epochVRFRequestCached = epochVRFRequest[nextEpochCached];
         if (_requestId != epochVRFRequestCached) {
             revert InvalidRequestId();
         }
@@ -370,6 +372,6 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
 
         epochVRFNumber[_requestId] = _randomWords[0];
 
-        emit RandomWordsFulfilled(currentEpoch + 1, _requestId);
+        emit RandomWordsFulfilled(nextEpochCached, _requestId);
     }
 }
