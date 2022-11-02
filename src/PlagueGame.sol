@@ -253,6 +253,10 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
     /// @param _doctorId ID of the doctor to cure
     /// @param _potionId ID of the potion to use
     function drinkPotion(uint256 _doctorId, uint256 _potionId) external override {
+        if (block.timestamp > epochStartTime + epochDuration) {
+            revert EpochAlreadyEnded();
+        }
+
         if (doctorStatus[_doctorId] != Status.Infected) {
             revert DoctorNotInfected();
         }
