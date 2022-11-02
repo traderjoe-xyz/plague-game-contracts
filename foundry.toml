@@ -5,6 +5,4 @@ libs = ['lib']
 
 gas_reports = ["PlagueGame"]
 
-[fuzz]
-runs = 32
 # See more config options https://github.com/foundry-rs/foundry/tree/master/config
