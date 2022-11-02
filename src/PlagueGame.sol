@@ -99,6 +99,14 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
         bytes32 _keyHash,
         uint32 _maxGas
     ) VRFConsumerBaseV2(address(_vrfCoordinator)) {
+        if (_playerNumberToEndGame == 0) {
+            revert InvalidPlayerNumberToEndGame();
+        }
+
+        if (_epochDuration == 0 || _epochDuration > 7 days) {
+            revert InvalidEpochDuration();
+        }
+
         for (uint256 i = 0; i < _infectionPercentagePerEpoch.length; i++) {
             if (_infectionPercentagePerEpoch[i] > BASIS_POINT) {
                 revert InvalidInfectionPercentage();

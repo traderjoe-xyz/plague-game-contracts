@@ -3,7 +3,9 @@ pragma solidity ^0.8.13;
 
 import "openzeppelin/token/ERC721//extensions/IERC721Enumerable.sol";
 
+error InvalidPlayerNumberToEndGame();
 error InvalidInfectionPercentage();
+error InvalidEpochDuration();
 error TooManyInitialized();
 error CollectionTooBig();
 error GameAlreadyStarted();
