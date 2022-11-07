@@ -117,7 +117,7 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
         vrfCoordinator = _vrfCoordinator;
         doctorNumber = _doctors.totalSupply();
 
-        if (doctorNumber > 1200) {
+        if (doctorNumber > 10_000) {
             revert CollectionTooBig();
         }
 

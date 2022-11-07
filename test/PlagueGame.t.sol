@@ -12,16 +12,16 @@ error OnlyCoordinatorCanFulfill(address have, address want);
 
 contract PlagueGameTest is Test {
     // Collection configuration
-    uint256 collectionSize = 1200;
+    uint256 collectionSize = 10_000;
     uint256 epochNumber = 12;
-    uint256 playerNumberToEndGame = 10;
+    uint256 playerNumberToEndGame = 100;
     uint256[] infectionPercentagePerEpoch =
         [2_000, 2_000, 2_000, 3_000, 3_000, 3_000, 4_000, 4_000, 4_000, 5_000, 5_000, 5_000];
     uint256 epochDuration = 1 days;
     uint256 prizePot = 100 ether;
 
     // Test configuration
-    uint256[] curedDoctorsPerEpoch = [120, 110, 100, 90, 50, 40, 30, 20, 15, 10, 5, 2];
+    uint256[] curedDoctorsPerEpoch = [1200, 1100, 1000, 900, 500, 400, 300, 200, 150, 100, 50, 20];
     uint256[] randomWords = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
     // VRF configuration
@@ -130,7 +130,6 @@ contract PlagueGameTest is Test {
 
         for (uint256 i = 0; i < epochNumber; ++i) {
             uint256 healthyDoctorsEndOfEpoch = plagueGame.getHealthyDoctorsNumber();
-            uint256[] memory deadDoctorsEndOfEpoch = _fetchDoctorsToStatus(IPlagueGame.Status.Dead);
 
             plagueGame.startEpoch();
 
@@ -199,7 +198,7 @@ contract PlagueGameTest is Test {
 
                 assertEq(plagueGame.isGameOver(), true, "Game should be over");
 
-                assertLe(healthyDoctors.length, playerNumberToEndGame, "There should be less than 10 players");
+                assertLe(healthyDoctors.length, playerNumberToEndGame, "There should be less than 100 players");
 
                 break;
             } else {
@@ -214,12 +213,6 @@ contract PlagueGameTest is Test {
 
                 _mockVRFResponse();
             }
-
-            assertEq(
-                _fetchDoctorsToStatus(IPlagueGame.Status.Dead).length - deadDoctorsEndOfEpoch.length,
-                expectedInfections - doctorsToCure,
-                "The expected number of doctors is dead"
-            );
 
             assertEq(
                 plagueGame.deadDoctorsPerEpoch(plagueGame.currentEpoch()),
@@ -363,8 +356,8 @@ contract PlagueGameTest is Test {
     }
 
     function _initializeGame() private {
-        for (uint256 i = 0; i < 10; i++) {
-            plagueGame.initializeGame(collectionSize / 10);
+        for (uint256 i = 0; i < 100; i++) {
+            plagueGame.initializeGame(collectionSize / 100);
         }
 
         vm.expectRevert(TooManyInitialized.selector);
