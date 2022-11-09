@@ -6,6 +6,8 @@ import "openzeppelin/utils/structs/EnumerableSet.sol";
 import "chainlink/VRFConsumerBaseV2.sol";
 import "chainlink/interfaces/VRFCoordinatorV2Interface.sol";
 
+import "forge-std/console.sol";
+
 import "./IPlagueGame.sol";
 
 contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
@@ -70,6 +72,22 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
 
     /// @dev Basis point to calulate percentages
     uint256 private constant BASIS_POINT = 10_000;
+
+    // 2**16 = 65k // Up to 65k doctors
+    // 16 * 16 = 256 // 16 doctors IDs per slot
+    // 10k / 16 = 625 // For 10k, need 625 slots
+
+    uint256 private constant BYTES_FOR_HEALTHY_DOCTOR_SET = 625;
+    uint256[BYTES_FOR_HEALTHY_DOCTOR_SET] private bytesHealthyDoctorsSet;
+    uint256 private bytesHealthyDoctors;
+
+    // 256 / 2 = 128 doctors per slot
+    // 10k / 128 = 78.125 need 79 slots
+
+    uint256 private constant BYTES_FOR_DOCTORS_STATUS_SET = 79;
+    uint256[BYTES_FOR_DOCTORS_STATUS_SET] private bytesDoctorsStatuses;
+
+    uint256 private healthyDoctorsNumber = 10_000;
 
     modifier gameOn() {
         if (isGameOver || !isGameStarted) {
@@ -154,6 +172,81 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
             doctorStatus[i] = Status.Healthy;
             healthyDoctors.add(i);
         }
+
+        uint256 doctorId;
+        for (uint256 j = 0; j < BYTES_FOR_HEALTHY_DOCTOR_SET; j++) {
+            doctorId = 0;
+            for (uint256 k = 0; k < 16; ++k) {
+                doctorId += (k + 16 * j) << (k * 16);
+            }
+
+            bytesHealthyDoctorsSet[j] = doctorId;
+        }
+
+        for (uint256 j = 0; j < 79; ++j) {
+            bytesDoctorsStatuses[j] = 0x5555555555555555555555555555555555555555555555555555555555555555;
+        }
+
+        bytesHealthyDoctors += _amount;
+    }
+
+    function getBytesDoctorStatus(uint256 _id) external view returns (Status) {
+        uint256 bytesStatus = bytesDoctorsStatuses[_id / 128];
+        uint256 shift = (_id % 128) * 2;
+        uint256 idDoctorStatus = (bytesStatus >> shift) & 3;
+
+        // It is not possible to cast uint256 to enum, this is a workaround to return a Status
+        assembly {
+            mstore(0x00, idDoctorStatus)
+            return(0x00, 0x20)
+        }
+    }
+
+    function updateBytesDoctosStatus(uint256 _id, Status _newStatus) public {
+        uint256 bytesStatus = bytesDoctorsStatuses[_id / 128];
+
+        bytesStatus &= (type(uint256).max ^ (3 << (_id % 128) * 2));
+        bytesStatus |= (uint256(_newStatus) << ((_id % 128) * 2));
+
+        bytesDoctorsStatuses[_id / 128] = bytesStatus;
+    }
+
+    function removeDoctorFromByteSet(uint256 index) public {
+        // Get the last doctor Id
+        uint256 doctorsAlive = healthyDoctorsNumber;
+        uint256 lastDoctorId = getDoctorIdFromBytesSet(doctorsAlive - 1);
+
+        // Get the doctor Id at the index
+        uint256 bytesDoctorSet = bytesHealthyDoctorsSet[index / 16];
+        uint256 doctorId = getDoctorIdFromBytesSet(index);
+
+        // Mask the doctor Id at the index
+        uint256 offset = (index % 16) * 16;
+        bytesDoctorSet &= ~(0xffff << offset);
+        // Replaces it by the last doctor Id of the array
+        bytesDoctorSet |= (lastDoctorId << offset);
+
+        bytesHealthyDoctorsSet[index / 16] = bytesDoctorSet;
+
+        // Decrement the doctor number
+        --healthyDoctorsNumber;
+    }
+
+    function addDoctorToByteSet(uint256 _doctorId) external {
+        uint256 bytesDoctorSet = bytesHealthyDoctorsSet[healthyDoctorsNumber / 16];
+        uint256 offset = (healthyDoctorsNumber % 16) * 16;
+        bytesDoctorSet &= ~(0xffff << offset);
+        bytesDoctorSet |= (_doctorId << offset);
+        bytesHealthyDoctorsSet[healthyDoctorsNumber / 16] = bytesDoctorSet;
+        ++healthyDoctorsNumber;
+
+        uint256 lastDoctorId = getDoctorIdFromBytesSet(healthyDoctorsNumber - 1);
+    }
+
+    function getDoctorIdFromBytesSet(uint256 _index) public view returns (uint256) {
+        uint256 bytesDoctorSet = bytesHealthyDoctorsSet[_index / 16];
+
+        return ((bytesDoctorSet >> (_index % 16) * 16) & 0xFFFF);
     }
 
     /// @notice Starts and pauses the prize withdrawal
@@ -239,6 +332,7 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
         for (uint256 i = 0; i < doctorNumber; ++i) {
             if (doctorStatus[i] == Status.Infected) {
                 doctorStatus[i] = Status.Dead;
+                updateBytesDoctosStatus(i, Status.Dead);
                 ++deads;
                 emit Dead(i);
             }
@@ -270,6 +364,8 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
         }
 
         doctorStatus[_doctorId] = Status.Healthy;
+
+        updateBytesDoctosStatus(_doctorId, Status.Healthy);
         healthyDoctors.add(_doctorId);
 
         _burnPotion(_potionId);
@@ -354,6 +450,8 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
             // Removing the doctors from the healthy doctors list and infecting him
             healthyDoctors.remove(doctorId);
             doctorStatus[doctorId] = Status.Infected;
+
+            updateBytesDoctosStatus(doctorId, Status.Infected);
 
             --_healthyDoctorsNumber;
             ++madeSick;
