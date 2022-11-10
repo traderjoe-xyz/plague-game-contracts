@@ -178,7 +178,7 @@ contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 
     /// @dev Plague doctor must be alive
     /// @dev Plague doctor should have not attempted brew in latest epoch
     /// @param _doctorId Token ID of plague doctor
-    function openChest(uint256 _doctorId)
+    function makePotion(uint256 _doctorId)
         external
         override
         doctorIsAlive(_doctorId)

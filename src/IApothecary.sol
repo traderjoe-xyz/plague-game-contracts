@@ -41,7 +41,7 @@ interface IApothecary {
 
     function removePotions(uint256[] memory _potionIds) external;
 
-    function openChest(uint256 _doctorId) external;
+    function makePotion(uint256 _doctorId) external;
 
     function destroy(address payable _recipient) external;
 }
