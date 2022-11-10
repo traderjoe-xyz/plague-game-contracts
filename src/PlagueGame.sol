@@ -253,6 +253,7 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
         infectedDoctorsPerEpoch[currentEpoch] = toMakeSick;
 
         _infectRandomDoctors(healthyDoctorsNumberCached, toMakeSick, randomNumber);
+        healthyDoctorsNumber = healthyDoctorsNumberCached - toMakeSick;
 
         emit DoctorsInfectedThisEpoch(currentEpochCached, toMakeSick);
     }
@@ -370,23 +371,41 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
         doctorsStatusSet[_id / 128] = bytesStatus;
     }
 
-    function _removeDoctorFromSet(uint256 index) private returns (uint256) {
+    function _updateDoctorStatusMemory(
+        uint256[DOCTORS_STATUS_SET_SIZE] memory _doctorsStatusSet,
+        uint256 _id,
+        Status _newStatus
+    ) private pure {
+        uint256 bytesStatus = _doctorsStatusSet[_id / 128];
+        uint256 shift = (_id % 128) * 2;
+
+        bytesStatus &= ~(3 << shift);
+        bytesStatus |= uint256(_newStatus) << shift;
+
+        _doctorsStatusSet[_id / 128] = bytesStatus;
+    }
+
+    function _removeDoctorFromSet(
+        uint256[HEALTHY_DOCTOR_SET_SIZE] memory _healthyDoctorsSet,
+        uint256 _healthyDoctorsNumber,
+        uint256 index
+    ) private pure returns (uint256) {
         // Get the last doctor Id
-        uint256 lastDoctorId = _getDoctorIdFromSet(healthyDoctorsNumber - 1);
+        uint256 lastDoctorId = _getDoctorIdFromSet(_healthyDoctorsSet, _healthyDoctorsNumber - 1);
 
         // Get the doctor Id at the index
-        uint256 bytesDoctorSet = healthyDoctorsSet[index / 16];
-        uint256 doctorId = _getDoctorIdFromSet(index);
+        uint256 bytesDoctorSet = _healthyDoctorsSet[index / 16];
+        uint256 doctorId = _getDoctorIdFromSet(_healthyDoctorsSet, index);
 
         // Mask the doctor Id at the index
         uint256 offset = (index % 16) * 16;
         bytesDoctorSet &= ~(0xffff << offset);
         // Replaces it by the last doctor Id of the array
         bytesDoctorSet |= (lastDoctorId << offset);
-        healthyDoctorsSet[index / 16] = bytesDoctorSet;
+        _healthyDoctorsSet[index / 16] = bytesDoctorSet;
 
         // Decrement the doctor number
-        --healthyDoctorsNumber;
+        // --healthyDoctorsNumber;
 
         return doctorId;
     }
@@ -400,8 +419,12 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
         ++healthyDoctorsNumber;
     }
 
-    function _getDoctorIdFromSet(uint256 _index) private view returns (uint256) {
-        uint256 bytesDoctorSet = healthyDoctorsSet[_index / 16];
+    function _getDoctorIdFromSet(uint256[HEALTHY_DOCTOR_SET_SIZE] memory _healthyDoctorsSet, uint256 _index)
+        private
+        pure
+        returns (uint256)
+    {
+        uint256 bytesDoctorSet = _healthyDoctorsSet[_index / 16];
 
         return ((bytesDoctorSet >> (_index % 16) * 16) & 0xFFFF);
     }
@@ -427,18 +450,24 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
         uint256 doctorId;
         uint256 healthyDoctorId;
 
+        uint256[HEALTHY_DOCTOR_SET_SIZE] memory healthyDoctorsSetCached = healthyDoctorsSet;
+        uint256[DOCTORS_STATUS_SET_SIZE] memory doctorsStatusSetCached = doctorsStatusSet;
+
         while (madeSick < _toMakeSick) {
             // Shuffles the random number to get a new one
             healthyDoctorId = uint256(keccak256(abi.encode(_randomNumber, madeSick))) % _healthyDoctorsNumber;
             // Removing the doctors from the healthy doctors list and infecting him
-            doctorId = _removeDoctorFromSet(healthyDoctorId);
-            _updateDoctorStatus(doctorId, Status.Infected);
+            doctorId = _removeDoctorFromSet(healthyDoctorsSetCached, _healthyDoctorsNumber, healthyDoctorId);
+            _updateDoctorStatusMemory(doctorsStatusSetCached, doctorId, Status.Infected);
 
             --_healthyDoctorsNumber;
             ++madeSick;
 
-            emit Sick(doctorId);
+            // emit Sick(doctorId);
         }
+
+        healthyDoctorsSet = healthyDoctorsSetCached;
+        doctorsStatusSet = doctorsStatusSetCached;
     }
 
     /// @dev Burns a potion NFT
