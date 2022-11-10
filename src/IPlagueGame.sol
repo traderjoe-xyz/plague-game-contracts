@@ -70,7 +70,6 @@ interface IPlagueGame {
     function prizePot() external view returns (uint256);
     function prizeWithdrawalAllowed() external view returns (bool);
 
-    function getHealthyDoctorsNumber() external view returns (uint256);
     function initializeGame(uint256 _amount) external;
     function allowPrizeWithdraw(bool _status) external;
     function startGame() external;

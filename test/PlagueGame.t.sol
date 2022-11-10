@@ -14,7 +14,7 @@ contract PlagueGameTest is Test {
     // Collection configuration
     uint256 collectionSize = 10_000;
     uint256 epochNumber = 12;
-    uint256 playerNumberToEndGame = 100;
+    uint256 playerNumberToEndGame = 10;
     uint256[] infectionPercentagePerEpoch =
         [2_000, 2_000, 2_000, 3_000, 3_000, 3_000, 4_000, 4_000, 4_000, 5_000, 5_000, 5_000];
     uint256 epochDuration = 1 days;
@@ -115,7 +115,7 @@ contract PlagueGameTest is Test {
 
     function testGame() public {
         assertEq(plagueGame.currentEpoch(), 0, "starting epoch should be 0");
-        assertEq(plagueGame.getHealthyDoctorsNumber(), collectionSize, "all doctors should be healthy");
+        assertEq(plagueGame.healthyDoctorsNumber(), collectionSize, "all doctors should be healthy");
         assertEq(plagueGame.isGameStarted(), false, "game should not be started");
         assertEq(plagueGame.isGameOver(), false, "game should not be over");
 
@@ -129,7 +129,7 @@ contract PlagueGameTest is Test {
         assertEq(plagueGame.isGameStarted(), true, "game should be started");
 
         for (uint256 i = 0; i < epochNumber; ++i) {
-            uint256 healthyDoctorsEndOfEpoch = plagueGame.getHealthyDoctorsNumber();
+            uint256 healthyDoctorsEndOfEpoch = plagueGame.healthyDoctorsNumber();
 
             plagueGame.startEpoch();
 
@@ -141,7 +141,7 @@ contract PlagueGameTest is Test {
 
             uint256 expectedInfections = healthyDoctorsEndOfEpoch * _getInfectedDoctorsPerEpoch(i + 1) / 10_000;
             assertEq(
-                healthyDoctorsEndOfEpoch - plagueGame.getHealthyDoctorsNumber(),
+                healthyDoctorsEndOfEpoch - plagueGame.healthyDoctorsNumber(),
                 expectedInfections,
                 "correct number of the doctors should have been removed from the healthy doctors set"
             );
@@ -160,7 +160,7 @@ contract PlagueGameTest is Test {
             _cureDoctors(doctorsToCure);
 
             assertEq(
-                healthyDoctorsEndOfEpoch - plagueGame.getHealthyDoctorsNumber(),
+                healthyDoctorsEndOfEpoch - plagueGame.healthyDoctorsNumber(),
                 expectedInfections - doctorsToCure,
                 "Doctors should have been put back in the healthy doctors set"
             );
@@ -227,7 +227,7 @@ contract PlagueGameTest is Test {
     function testPrizeWithdrawal() public {
         testFullGame(0);
 
-        uint256 aliveDoctors = plagueGame.getHealthyDoctorsNumber();
+        uint256 aliveDoctors = plagueGame.healthyDoctorsNumber();
         uint256[] memory winners = _fetchDoctorsToStatus(IPlagueGame.Status.Healthy);
 
         assertEq(winners.length, aliveDoctors, "The winners array should be the same size as the number of winners");
@@ -297,7 +297,10 @@ contract PlagueGameTest is Test {
         uint256 indexSearchForInfected;
         for (uint256 i = 0; i < _numberCured; i++) {
             if (lastPotionUsed < collectionSize * 8_000 / 10_000) {
-                while (plagueGame.doctorStatus(indexSearchForInfected) != IPlagueGame.Status.Infected) {
+                while (
+                    plagueGame.doctorStatus(indexSearchForInfected) != IPlagueGame.Status.Infected
+                        && indexSearchForInfected < collectionSize
+                ) {
                     ++indexSearchForInfected;
                 }
 
@@ -356,12 +359,12 @@ contract PlagueGameTest is Test {
     }
 
     function _initializeGame() private {
-        for (uint256 i = 0; i < 100; i++) {
-            plagueGame.initializeGame(collectionSize / 100);
-        }
+        plagueGame.initializeGame(200);
+        plagueGame.initializeGame(200);
+        plagueGame.initializeGame(225);
 
         vm.expectRevert(TooManyInitialized.selector);
-        plagueGame.initializeGame(collectionSize / 10);
+        plagueGame.initializeGame(1);
     }
 
     function _gameSetup() private {
