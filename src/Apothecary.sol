@@ -11,37 +11,31 @@ import "./IPlagueGame.sol";
 /// @author Trader Joe
 /// @title Apothecary
 /// @notice Contract for alive plague doctors to attempt brew a potion at epocs
-contract Apothecary is
-	IApothecary,
-	IERC721Receiver,
-	Ownable,
-	VRFConsumerBaseV2
-{
+contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 {
+    /// @notice Probability of a doctor getting a potion from chest. [1 - 100] typically
+    uint8 private difficulty;
+    /// @notice Timestamp of begining of latest (current) epoch
+    uint112 private latestEpochTimestamp;
+    /// @notice Duration of each epoch
+    uint112 public constant EPOCH = 6 hours;
+    /// @notice Token ID of plague doctor that called VRF for epoch
+    /// @dev Cache plague doctor ID to avoid multiple tx for first brew in epoch
+    uint256 public plagueDoctorVRFCaller;
 
-	/// @notice Probability of a doctor getting a potion from chest. [1 - 100] typically
-	uint8 private difficulty;
-	/// @notice Timestamp of begining of latest (current) epoch
-	uint112 private latestEpochTimestamp;
-	/// @notice Duration of each epoch
-	uint112 public constant EPOCH = 6 hours;
-	/// @notice Token ID of plague doctor that called VRF for epoch
-	/// @dev Cache plague doctor ID to avoid multiple tx for first brew in epoch
-	uint256 public plagueDoctorVRFCaller;
+    /// @notice Contract address of plague game
+    IPlagueGame public immutable override plagueGame;
+    /// @notice Contract address of potions NFT
+    IERC721Enumerable public immutable override potions;
 
-	/// @notice Contract address of plague game
-	IPlagueGame public immutable override plagueGame;
-	/// @notice Contract address of potions NFT
-	IERC721Enumerable public immutable override potions;
+    /// @notice Brew results of a plague doctor
+    mapping(uint256 => uint8[]) private brewResults;
+    /// @notice Keep track if plague doctor has tried to brew in an epoch
+    /// @dev Mapping from an epoch timestamp to plague doctor ID to tried state
+    mapping(uint112 => mapping(uint256 => bool)) private triedBrewInEpoch;
+    /// @notice VRF numbers generated for epochs
+    mapping(uint112 => uint256) private epochVRFNumber;
 
-	/// @notice Brew results of a plague doctor
-	mapping(uint256 => uint8[]) private brewResults;
-	/// @notice Keep track if plague doctor has tried to brew in an epoch
-	/// @dev Mapping from an epoch timestamp to plague doctor ID to tried state
-	mapping(uint112 => mapping(uint256 => bool)) private triedBrewInEpoch;
-	/// @notice VRF numbers generated for epochs
-	mapping(uint112 => uint256) private epochVRFNumber;
-
-	/// @dev Address of VRF coordinator
+    /// @dev Address of VRF coordinator
     VRFCoordinatorV2Interface private immutable vrfCoordinator;
     /// @dev VRF subscription ID
     uint64 private immutable subscriptionId;
@@ -50,354 +44,289 @@ contract Apothecary is
     /// @dev Max gas used on the VRF callback
     uint32 private immutable maxGas;
 
-	/** Modifiers **/
+    /**
+     * Modifiers *
+     */
 
-	/// @notice Verify that plague doctor is not dead
-	/// @param _doctorId Token ID of plague doctor
-	modifier doctorIsAlive(uint256 _doctorId) {
-		if (
-			plagueGame.doctorStatus(_doctorId) == IPlagueGame.Status.Dead
-		) {
-			revert DoctorIsDead();
-		}
-		_;
-	}
+    /// @notice Verify that plague doctor is not dead
+    /// @param _doctorId Token ID of plague doctor
+    modifier doctorIsAlive(uint256 _doctorId) {
+        if (plagueGame.doctorStatus(_doctorId) == IPlagueGame.Status.Dead) {
+            revert DoctorIsDead();
+        }
+        _;
+    }
 
-	/// @notice Verify that plague doctor has not attempted to brew potion in latest epoch
-	/// @param _doctorId Token ID of plague doctor
-	modifier hasNotBrewedInLatestEpoch(uint256 _doctorId) {
-		if (triedBrewInEpoch[latestEpochTimestamp][_doctorId]) {
-			revert DoctorHasBrewed(latestEpochTimestamp);
-		}
-		_;
-	}
+    /// @notice Verify that plague doctor has not attempted to brew potion in latest epoch
+    /// @param _doctorId Token ID of plague doctor
+    modifier hasNotBrewedInLatestEpoch(uint256 _doctorId) {
+        if (triedBrewInEpoch[latestEpochTimestamp][_doctorId]) {
+            revert DoctorHasBrewed(latestEpochTimestamp);
+        }
+        _;
+    }
 
-	/** Constructor **/
+    /**
+     * Constructor *
+     */
 
-	constructor(
-		IPlagueGame _plagueGame,
-		IERC721Enumerable _potions,
-		uint8 _difficulty,
-		VRFCoordinatorV2Interface _vrfCoordinator,
-		uint64 _subscriptionId,
-		bytes32 _keyHash,
-		uint32 _maxGas
-	) VRFConsumerBaseV2(address(_vrfCoordinator)) {
-		if (_difficulty == 0) {
-			revert InvalidDifficulty();
-		}
+    constructor(
+        IPlagueGame _plagueGame,
+        IERC721Enumerable _potions,
+        uint8 _difficulty,
+        VRFCoordinatorV2Interface _vrfCoordinator,
+        uint64 _subscriptionId,
+        bytes32 _keyHash,
+        uint32 _maxGas
+    ) VRFConsumerBaseV2(address(_vrfCoordinator)) {
+        if (_difficulty == 0) {
+            revert InvalidDifficulty();
+        }
 
-		plagueGame = _plagueGame;
-		potions = _potions;
-		difficulty = _difficulty;
+        plagueGame = _plagueGame;
+        potions = _potions;
+        difficulty = _difficulty;
 
-		// VRF setup
-		vrfCoordinator = _vrfCoordinator;
+        // VRF setup
+        vrfCoordinator = _vrfCoordinator;
         subscriptionId = _subscriptionId;
         keyHash = _keyHash;
         maxGas = _maxGas;
-	}
+    }
 
-	/** View Functions **/
+    /**
+     * View Functions *
+     */
 
-	/// @notice Returns the recent brew results of a plague doctor
-	/// @dev Returns [n] number of brew results if doctor has brewed up to [n] times
-	/// @param _doctorId Token ID of plague doctor
-	/// @param _count Number of latest brew results to return
-	/// @return latestBrewResults Last [n] brew results
-	function getLatestBrews(
-		uint256 _doctorId,
-		uint256 _count
-	) 
-		external
-		view
+    /// @notice Returns the recent brew results of a plague doctor
+    /// @dev Returns [n] number of brew results if doctor has brewed up to [n] times
+    /// @param _doctorId Token ID of plague doctor
+    /// @param _count Number of latest brew results to return
+    /// @return latestBrewResults Last [n] brew results
+    function getLatestBrews(uint256 _doctorId, uint256 _count)
+        external
+        view
         override
-		returns (
-			uint8[] memory latestBrewResults
-		)
-	{
-		uint256 doctorBrewCount = brewResults[_doctorId].length;
+        returns (uint8[] memory latestBrewResults)
+    {
+        uint256 doctorBrewCount = brewResults[_doctorId].length;
 
-		if (doctorBrewCount > _count) {
-			uint256 offset = doctorBrewCount - _count;
-			for (uint256 i = offset; i < _count + offset; ) {
-				latestBrewResults[i] = brewResults[_doctorId][i + offset];
-				unchecked {
-					++i;
-				}
-			}
-		} else {
-			for (uint256 i = 0; i < doctorBrewCount; ) {
-				latestBrewResults[i] = brewResults[_doctorId][i];
-				unchecked {
-					++i;
-				}
-			}
-		}
-	}
+        if (doctorBrewCount > _count) {
+            uint256 offset = doctorBrewCount - _count;
+            for (uint256 i = offset; i < _count + offset;) {
+                latestBrewResults[i] = brewResults[_doctorId][i + offset];
+                unchecked {
+                    ++i;
+                }
+            }
+        } else {
+            for (uint256 i = 0; i < doctorBrewCount;) {
+                latestBrewResults[i] = brewResults[_doctorId][i];
+                unchecked {
+                    ++i;
+                }
+            }
+        }
+    }
 
-	/// @notice Returns time in seconds till start of next epoch
-	/// @return countdown Seconds till start of next epoch
-	function getTimeToNextEpoch()
-		external
-		view
+    /// @notice Returns time in seconds till start of next epoch
+    /// @return countdown Seconds till start of next epoch
+    function getTimeToNextEpoch() external view override returns (uint256 countdown) {
+        countdown = block.timestamp - (block.timestamp % EPOCH);
+    }
+
+    /// @notice Returns number of potions owned by Apothecary contract
+    /// @return potionsLeft Number of potions owned by contract
+    function getPotionsLeft() external view override returns (uint256 potionsLeft) {
+        potionsLeft = _getPotionsLeft();
+    }
+
+    /// @notice Returns random number from VRF for an epoch
+    /// @param _epochTimestamp Timestamp of epoch
+    /// @return epochVRF Random number from VRF used for epoch results
+    function getVRFForEpoch(uint112 _epochTimestamp) external view override returns (uint256 epochVRF) {
+        epochVRF = epochVRFNumber[_getEpochStart(_epochTimestamp)];
+    }
+
+    /// @notice Returns current difficulty of brewing a free potion
+    /// @dev Probability is calculated as inverse of difficulty. (1 / difficulty)
+    /// @return winDifficulty Difficulty of brewing a free potion
+    function getDifficulty() external view override returns (uint8 winDifficulty) {
+        winDifficulty = difficulty;
+    }
+
+    /// @notice Returns start timestamp of latest epoch
+    /// @return latestEpoch Start timestamp of latest epoch
+    function getLatestEpochTimestamp() external view override returns (uint112 latestEpoch) {
+        latestEpoch = latestEpochTimestamp;
+    }
+
+    /// @notice Returns true if plague doctor attempted to brew a potion in an epoch
+    /// @notice and false otherwise
+    /// @param _epochTimestamp Timestamp of epoch
+    /// @param _doctorId Token ID of plague doctor
+    /// @return tried Boolean showing plague doctor brew attempt in epoch
+    function getTriedInEpoch(uint112 _epochTimestamp, uint256 _doctorId) external view override returns (bool tried) {
+        tried = triedBrewInEpoch[_getEpochStart(_epochTimestamp)][_doctorId];
+    }
+
+    /**
+     * External Functions *
+     */
+
+    /// @notice Give random chance to receive a potion at a probability of (1 / difficulty)
+    /// @dev Plague doctor must be alive
+    /// @dev Plague doctor should have not attempted brew in latest epoch
+    /// @param _doctorId Token ID of plague doctor
+    function openChest(uint256 _doctorId)
+        external
         override
-		returns (
-			uint256 countdown
-		)
-	{
-		countdown = block.timestamp - (block.timestamp % EPOCH);
-	}
+        doctorIsAlive(_doctorId)
+        hasNotBrewedInLatestEpoch(_doctorId)
+    {
+        if (latestEpochTimestamp + EPOCH > block.timestamp) {
+            _brew(_doctorId);
+        } else {
+            plagueDoctorVRFCaller = _doctorId;
+            vrfCoordinator.requestRandomWords(keyHash, subscriptionId, 3, maxGas, 1);
+        }
+    }
 
-	/// @notice Returns number of potions owned by Apothecary contract
-	/// @return potionsLeft Number of potions owned by contract
-	function getPotionsLeft()
-		external
-		view
+    /// @notice Function is called when Apothecary contract receives an ERC721 token
+    /// @notice via `safeTransferFrom`
+    /// @dev See OpenZeppelin {IERC721Receiver-onERC721Received}
+    /// @return selector The selector of the function
+    function onERC721Received(address, address, uint256, bytes calldata)
+        external
+        pure
         override
-		returns (
-			uint256 potionsLeft
-		)
-	{
-		potionsLeft = _getPotionsLeft();
-	}
+        returns (bytes4 selector)
+    {
+        selector = IERC721Receiver.onERC721Received.selector;
+    }
 
-	/// @notice Returns random number from VRF for an epoch
-	/// @param _epochTimestamp Timestamp of epoch
-	/// @return epochVRF Random number from VRF used for epoch results
-	function getVRFForEpoch(
-		uint112 _epochTimestamp
-	)
-		external
-		view
-        override
-		returns (
-			uint256 epochVRF
-		)
-	{
-		epochVRF = epochVRFNumber[_getEpochStart(_epochTimestamp)];
-	}
+    /**
+     * Owner Functions *
+     */
 
-	/// @notice Returns current difficulty of brewing a free potion
-	/// @dev Probability is calculated as inverse of difficulty. (1 / difficulty)
-	/// @return winDifficulty Difficulty of brewing a free potion
-	function getDifficulty()
-		external
-		view
-        override
-		returns (
-			uint8 winDifficulty
-		)
-	{
-		winDifficulty = difficulty;
-	}
+    /// @notice Transfer potions from owner to Apothecary contract
+    /// @dev Potion IDs should be approved before this function is called
+    /// @param _potionIds Potion IDs to be transferred from owner to Apothecary contract
+    function addPotions(uint256[] memory _potionIds) external override onlyOwner {
+        for (uint256 i = 0; i < _potionIds.length;) {
+            potions.safeTransferFrom(msg.sender, address(this), _potionIds[i]);
 
-	/// @notice Returns start timestamp of latest epoch
-	/// @return latestEpoch Start timestamp of latest epoch
-	function getLatestEpochTimestamp()
-		external
-		view
-        override
-		returns (
-			uint112 latestEpoch
-		)
-	{
-		latestEpoch = latestEpochTimestamp;
-	}
+            unchecked {
+                ++i;
+            }
+        }
+        emit PotionsAdded(_potionIds);
+    }
 
-	/// @notice Returns true if plague doctor attempted to brew a potion in an epoch
-	/// @notice and false otherwise
-	/// @param _epochTimestamp Timestamp of epoch
-	/// @param _doctorId Token ID of plague doctor
-	/// @return tried Boolean showing plague doctor brew attempt in epoch
-	function getTriedInEpoch(
-		uint112 _epochTimestamp,
-		uint256 _doctorId
-	)
-		external
-		view
-        override
-		returns (
-			bool tried
-		)
-	{
-		tried = triedBrewInEpoch[_getEpochStart(_epochTimestamp)][_doctorId];
-	}
+    /// @notice Transfers potions from Apothecary contract to owner
+    /// @dev Potion IDs should be owned by Apothecary contract
+    /// @param _potionIds Potion IDs to be transferred from Apothecary contract to owner
+    function removePotions(uint256[] memory _potionIds) external override onlyOwner {
+        for (uint256 i = 0; i < _potionIds.length;) {
+            potions.safeTransferFrom(address(this), msg.sender, _potionIds[i]);
 
-	/** External Functions **/
+            unchecked {
+                ++i;
+            }
+        }
+        emit PotionsRemoved(_potionIds);
+    }
 
-	/// @notice Give random chance to receive a potion at a probability of (1 / difficulty)
-	/// @dev Plague doctor must be alive
-	/// @dev Plague doctor should have not attempted brew in latest epoch
-	/// @param _doctorId Token ID of plague doctor
-	function openChest(
-		uint256 _doctorId
-	) 
-		external
-        override
-		doctorIsAlive(_doctorId)
-		hasNotBrewedInLatestEpoch(_doctorId)
-	{
-		if (latestEpochTimestamp + EPOCH > block.timestamp) {
-			_brew(_doctorId);
-		} else {
-			plagueDoctorVRFCaller = _doctorId;
-			vrfCoordinator.requestRandomWords(keyHash, subscriptionId, 3, maxGas, 1);
-		}
-	}
+    /// @notice Terminate Apothecary contract. i.e remove it's bytecode from the blockchain
+    /// @dev Can only be executed when plague game is over
+    /// @param _recipient Address to receive native balance and potion tokens left
+    function destroy(address payable _recipient) external override onlyOwner {
+        if (!plagueGame.isGameOver()) {
+            revert GameNotOver();
+        }
 
-	/// @notice Function is called when Apothecary contract receives an ERC721 token
-	/// @notice via `safeTransferFrom`
-	/// @dev See OpenZeppelin {IERC721Receiver-onERC721Received}
-	/// @return selector The selector of the function
-	function onERC721Received(
-        address,
-        address,
-        uint256,
-        bytes calldata
-    ) external pure override returns (bytes4 selector) {
-		selector = IERC721Receiver.onERC721Received.selector;
-	}
+        if (_getPotionsLeft() > 0) {
+            uint256[] memory _potionIds = _getPotionIds(_getPotionsLeft());
+            for (uint256 i = 0; i < _potionIds.length;) {
+                potions.safeTransferFrom(address(this), _recipient, _potionIds[i]);
 
-	/** Owner Functions **/
+                unchecked {
+                    ++i;
+                }
+            }
+        }
+        selfdestruct(_recipient);
+    }
 
-	/// @notice Transfer potions from owner to Apothecary contract
-	/// @dev Potion IDs should be approved before this function is called
-	/// @param _potionIds Potion IDs to be transferred from owner to Apothecary contract
-	function addPotions(uint256[] memory _potionIds) external override onlyOwner {
-		for (uint256 i = 0; i < _potionIds.length; ) {
-			potions.safeTransferFrom(
-				msg.sender,
-				address(this),
-				_potionIds[i]
-			);
+    /**
+     * Private and Internal Functions *
+     */
 
-			unchecked {
-				++i;
-			}
-		}
-		emit PotionsAdded(_potionIds);
-	}
+    /// @notice Callback by VRFConsumerBaseV2 to pass VRF results
+    /// @dev See Chainlink {VRFConsumerBaseV2-fulfillRandomWords}
+    /// @param _randomWords Random numbers provided by VRF
+    function fulfillRandomWords(uint256, uint256[] memory _randomWords) internal override {
+        uint256 elapsedEpochs = (block.timestamp - latestEpochTimestamp) / EPOCH;
+        latestEpochTimestamp += uint112(EPOCH * elapsedEpochs);
+        epochVRFNumber[latestEpochTimestamp] = _randomWords[0];
 
-	/// @notice Transfers potions from Apothecary contract to owner
-	/// @dev Potion IDs should be owned by Apothecary contract
-	/// @param _potionIds Potion IDs to be transferred from Apothecary contract to owner
-	function removePotions(uint256[] memory _potionIds) external override onlyOwner {
-		for (uint256 i = 0; i < _potionIds.length; ) {
-			potions.safeTransferFrom(
-				address(this),
-				msg.sender,
-				_potionIds[i]
-			);
+        _brew(plagueDoctorVRFCaller);
+    }
 
-			unchecked {
-				++i;
-			}
-		}
-		emit PotionsRemoved(_potionIds);
-	}
+    /// @notice Compute random chance for a plague doctor to win a free potion
+    /// @dev Should be called by functions that perform safety checks like plague
+    /// @dev doctor is alive and has not brewed in current epoch
+    /// @param _doctorId Token ID of plague doctor
+    function _brew(uint256 _doctorId) private {
+        if (plagueGame.isGameOver()) {
+            revert GameIsClosed();
+        }
 
-	/// @notice Terminate Apothecary contract. i.e remove it's bytecode from the blockchain
-	/// @dev Can only be executed when plague game is over
-	/// @param _recipient Address to receive native balance and potion tokens left
-	function destroy(address payable _recipient) external override onlyOwner {
-		if (!plagueGame.isGameOver()) {
-			revert GameNotOver();
-		}
+        triedBrewInEpoch[latestEpochTimestamp][_doctorId] = true;
+        bytes32 hash = keccak256(abi.encodePacked(epochVRFNumber[latestEpochTimestamp], _doctorId));
 
-		if (_getPotionsLeft() > 0) {
-			uint256[] memory _potionIds = _getPotionIds(_getPotionsLeft());
-			for (uint256 i = 0; i < _potionIds.length; ) {
-				potions.safeTransferFrom(
-					address(this),
-					_recipient,
-					_potionIds[i]
-				);
+        if (uint256(hash) % difficulty == 0) {
+            if (_getPotionsLeft() == 0) {
+                revert PotionsNotEnough(_getPotionsLeft());
+            }
 
-				unchecked {
-					++i;
-				}
-			}
-		}
-		selfdestruct(_recipient);
-	}
+            brewResults[_doctorId].push(1);
+            uint256 potionId = _getPotionIds(1)[0];
+            potions.safeTransferFrom(address(this), potions.ownerOf(_doctorId), potionId);
 
-	/** Private and Internal Functions **/
+            emit SentPotion(_doctorId, potionId);
+        } else {
+            brewResults[_doctorId].push(0);
+        }
+    }
 
-	/// @notice Callback by VRFConsumerBaseV2 to pass VRF results
-	/// @dev See Chainlink {VRFConsumerBaseV2-fulfillRandomWords}
-	/// @param _randomWords Random numbers provided by VRF
-	function fulfillRandomWords(
-		uint256,
-		uint256[] memory _randomWords
-	) internal override {
-		uint256 elapsedEpochs = (block.timestamp - latestEpochTimestamp) / EPOCH;
-		latestEpochTimestamp +=  uint112(EPOCH * elapsedEpochs);
-		epochVRFNumber[latestEpochTimestamp] = _randomWords[0];
+    /// @notice Returns period start of epoch timestamp
+    /// @param _epochTimestamp Timestamp of epoch
+    /// @return epochStart Start timestamp of epoch
+    function _getEpochStart(uint112 _epochTimestamp) private pure returns (uint112 epochStart) {
+        epochStart = _epochTimestamp - (_epochTimestamp % EPOCH);
+    }
 
-		_brew(plagueDoctorVRFCaller);
-	}
+    /// @notice Returns number of potions owned by Apothecary contract
+    /// @return potionsLeft Number of potions owned by contract
+    function _getPotionsLeft() private view returns (uint256 potionsLeft) {
+        potionsLeft = potions.balanceOf(address(this));
+    }
 
-	/// @notice Compute random chance for a plague doctor to win a free potion
-	/// @dev Should be called by functions that perform safety checks like plague
-	/// @dev doctor is alive and has not brewed in current epoch
-	/// @param _doctorId Token ID of plague doctor
-	function _brew(uint256 _doctorId) private {
-		if (plagueGame.isGameOver()) {
-			revert GameIsClosed();
-		}
+    /// @notice Returns [n] token IDs of potions owned by Apothecary contract
+    /// @dev Reverts if [n] is greater than Apothecary contract balance
+    /// @param _count Number of token IDs to return
+    /// @return potionIds Array of [n] potion IDs owned by contract
+    function _getPotionIds(uint256 _count) private view returns (uint256[] memory potionIds) {
+        if (_count > _getPotionsLeft()) {
+            revert PotionsNotEnough(_getPotionsLeft());
+        }
 
-		triedBrewInEpoch[latestEpochTimestamp][_doctorId] = true;
-		bytes32 hash = keccak256(
-			abi.encodePacked(epochVRFNumber[latestEpochTimestamp], _doctorId)
-		);
-
-		if (uint256(hash) % difficulty == 0) {
-			if (_getPotionsLeft() == 0) {
-				revert PotionsNotEnough(_getPotionsLeft());
-			}
-
-			brewResults[_doctorId].push(1);
-			uint256 potionId = _getPotionIds(1)[0];
-			potions.safeTransferFrom(
-				address(this),
-				potions.ownerOf(_doctorId),
-				potionId
-			);
-
-			emit SentPotion(_doctorId, potionId);
-		} else {
-			brewResults[_doctorId].push(0);
-		}
-	}
-
-	/// @notice Returns period start of epoch timestamp
-	/// @param _epochTimestamp Timestamp of epoch
-	/// @return epochStart Start timestamp of epoch
-	function _getEpochStart(uint112 _epochTimestamp) private pure returns (uint112 epochStart) {
-		epochStart = _epochTimestamp - (_epochTimestamp % EPOCH);
-	}
-
-	/// @notice Returns number of potions owned by Apothecary contract
-	/// @return potionsLeft Number of potions owned by contract
-	function _getPotionsLeft() private view returns (uint256 potionsLeft) {
-		potionsLeft = potions.balanceOf(address(this));
-	}
-
-	/// @notice Returns [n] token IDs of potions owned by Apothecary contract
-	/// @dev Reverts if [n] is greater than Apothecary contract balance
-	/// @param _count Number of token IDs to return
-	/// @return potionIds Array of [n] potion IDs owned by contract
-	function _getPotionIds(uint256 _count) private view returns (uint256[] memory potionIds) {
-		if (_count > _getPotionsLeft()) {
-			revert PotionsNotEnough(_getPotionsLeft());
-		}
-
-		for (uint i = 0; i < _count; ) {
-			potionIds[i] = potions.tokenOfOwnerByIndex(address(this), i);
-			unchecked {
-				++i;
-			}
-		}
-	}
+        for (uint256 i = 0; i < _count;) {
+            potionIds[i] = potions.tokenOfOwnerByIndex(address(this), i);
+            unchecked {
+                ++i;
+            }
+        }
+    }
 }
