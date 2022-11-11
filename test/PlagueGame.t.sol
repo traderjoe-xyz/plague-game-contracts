@@ -21,7 +21,7 @@ contract PlagueGameTest is Test {
     uint256 prizePot = 100 ether;
 
     // Test configuration
-    uint256[] curedDoctorsPerEpoch = [1200, 1100, 1000, 900, 500, 400, 300, 200, 150, 100, 50, 20];
+    uint256[] curedDoctorsPerEpoch = [1200, 1100, 1000, 900, 500, 400, 300, 200, 150, 100, 50, 20, 0, 0, 0, 0, 0, 0];
     uint256[] randomWords = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
     // VRF configuration
@@ -71,6 +71,7 @@ contract PlagueGameTest is Test {
         vm.expectRevert(VRFRequestAlreadyAsked.selector);
         plagueGame.rawFulfillRandomWords(s_nextRequestId - 1, randomWords);
 
+        _computeInfectedDoctors();
         plagueGame.startEpoch();
 
         vm.prank(address(coordinator));
@@ -122,14 +123,25 @@ contract PlagueGameTest is Test {
         plagueGame.startGame();
 
         vm.expectRevert(VRFResponseMissing.selector);
+        plagueGame.computeInfectedDoctors(collectionSize);
+
+        vm.expectRevert(InfectionNotComputed.selector);
         plagueGame.startEpoch();
 
         _mockVRFResponse();
 
         assertEq(plagueGame.isGameStarted(), true, "game should be started");
 
-        for (uint256 i = 0; i < epochNumber; ++i) {
+        for (uint256 i = 0; i < epochNumber + 10; ++i) {
             uint256 healthyDoctorsEndOfEpoch = plagueGame.healthyDoctorsNumber();
+
+            vm.expectRevert(InfectionNotComputed.selector);
+            plagueGame.startEpoch();
+
+            _computeInfectedDoctors();
+
+            vm.expectRevert(NothingToCompute.selector);
+            plagueGame.computeInfectedDoctors(collectionSize);
 
             plagueGame.startEpoch();
 
@@ -137,6 +149,8 @@ contract PlagueGameTest is Test {
 
             // Epoch can't be started twice
             vm.expectRevert(VRFResponseMissing.selector);
+            plagueGame.computeInfectedDoctors(collectionSize);
+            vm.expectRevert(InfectionNotComputed.selector);
             plagueGame.startEpoch();
 
             uint256 expectedInfections = healthyDoctorsEndOfEpoch * _getInfectedDoctorsPerEpoch(i + 1) / 10_000;
@@ -171,12 +185,6 @@ contract PlagueGameTest is Test {
                 "The expected number of doctors is infected"
             );
 
-            uint256[] memory deadDoctors = _fetchDoctorsToStatus(IPlagueGame.Status.Dead);
-            for (uint256 j = 0; j < deadDoctors.length; j++) {
-                vm.expectRevert(DoctorNotInfected.selector);
-                plagueGame.drinkPotion(deadDoctors[j], lastPotionUsed);
-            }
-
             uint256[] memory healthyDoctors = _fetchDoctorsToStatus(IPlagueGame.Status.Healthy);
             for (uint256 j = 0; j < healthyDoctors.length; j++) {
                 vm.expectRevert(DoctorNotInfected.selector);
@@ -209,7 +217,7 @@ contract PlagueGameTest is Test {
                 assertEq(plagueGame.isGameOver(), false, "Game should not be over");
 
                 vm.expectRevert(VRFResponseMissing.selector);
-                plagueGame.startEpoch();
+                plagueGame.computeInfectedDoctors(collectionSize);
 
                 _mockVRFResponse();
             }
@@ -268,8 +276,11 @@ contract PlagueGameTest is Test {
         _mockVRFResponse();
 
         while (true) {
+            _computeInfectedDoctors();
             plagueGame.startEpoch();
+
             _cureRandomDoctors(_randomnessSeed);
+
             skip(epochDuration);
             plagueGame.endEpoch();
 
@@ -284,6 +295,15 @@ contract PlagueGameTest is Test {
         assertGt(winners.length, 0, "There should at least 1 winner");
 
         assertLe(winners.length, playerNumberToEndGame, "There should no more than the expected amount of winners");
+    }
+
+    function _computeInfectedDoctors() private {
+        uint256 toInfect = plagueGame.infectedDoctorsPerEpoch(plagueGame.currentEpoch() + 1);
+        uint256 i;
+        while (i < toInfect) {
+            plagueGame.computeInfectedDoctors(1e3);
+            i += 1e3;
+        }
     }
 
     function _cureRandomDoctors(uint256 _randomnessSeed) private {
@@ -302,6 +322,9 @@ contract PlagueGameTest is Test {
                         && indexSearchForInfected < collectionSize
                 ) {
                     ++indexSearchForInfected;
+                }
+                if (indexSearchForInfected == collectionSize) {
+                    break;
                 }
 
                 _cureDoctor(indexSearchForInfected);

@@ -12,6 +12,8 @@ error GameAlreadyStarted();
 error GameNotStarted();
 error GameNotOver();
 error GameIsClosed();
+error InfectionNotComputed();
+error NothingToCompute();
 error EpochNotReadyToEnd();
 error EpochAlreadyEnded();
 error DoctorNotInfected();

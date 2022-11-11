@@ -70,6 +70,10 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
     /// @dev Used on contract initialization
     uint256 private lastHealthyDoctorsSetItemUpdated;
 
+    /// @dev Keeps track of the doctors already infected for an epoch
+    /// Used to paginate startEpoch
+    mapping(uint256 => uint256) private computedInfections;
+
     /// @dev Address of the VRF coordinator
     VRFCoordinatorV2Interface private immutable vrfCoordinator;
     /// @dev VRF subscription ID
@@ -218,27 +222,7 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
             revert GameNotStarted();
         }
 
-        isGameStarted = true;
-        emit GameStarted();
-
-        _requestRandomWords();
-    }
-
-    /// @notice Starts a new epoch if the conditions are met
-    function startEpoch() external override gameOn {
-        ++currentEpoch;
-
-        uint256 randomNumber = epochVRFNumber[epochVRFRequest[currentEpoch]];
-        if (randomNumber == 0) {
-            revert VRFResponseMissing();
-        }
-
-        epochStartTime = block.timestamp;
-
-        uint256 healthyDoctorsNumberCached = healthyDoctorsNumber;
-        uint256 currentEpochCached = currentEpoch;
-
-        uint256 toMakeSick = healthyDoctorsNumberCached * _getinfectionRate(currentEpochCached) / BASIS_POINT;
+        uint256 toMakeSick = healthyDoctorsNumber * _getinfectionRate(1) / BASIS_POINT;
 
         // Need at least one doctor to be infected, otherwise the game will never end
         if (toMakeSick == 0) {
@@ -246,16 +230,61 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
         }
 
         // Need at least one doctor left healthy, otherwise the game could end up with no winners
-        if (toMakeSick == healthyDoctorsNumberCached) {
+        if (toMakeSick == healthyDoctorsNumber) {
             toMakeSick -= 1;
         }
 
-        infectedDoctorsPerEpoch[currentEpoch] = toMakeSick;
+        infectedDoctorsPerEpoch[1] = toMakeSick;
 
-        _infectRandomDoctors(healthyDoctorsNumberCached, toMakeSick, randomNumber);
-        healthyDoctorsNumber = healthyDoctorsNumberCached - toMakeSick;
+        isGameStarted = true;
+        emit GameStarted();
 
-        emit DoctorsInfectedThisEpoch(currentEpochCached, toMakeSick);
+        _requestRandomWords();
+    }
+
+    function computeInfectedDoctors(uint256 _amount) external {
+        uint256 nextEpoch = currentEpoch + 1;
+
+        uint256 healthyDoctorsNumberCached = healthyDoctorsNumber;
+        uint256 offset;
+
+        uint256 randomNumber = epochVRFNumber[epochVRFRequest[nextEpoch]];
+        if (randomNumber == 0) {
+            revert VRFResponseMissing();
+        }
+
+        offset = computedInfections[nextEpoch];
+
+        // Only infect the necessary amount of doctors
+        if (offset + _amount > infectedDoctorsPerEpoch[nextEpoch]) {
+            _amount = infectedDoctorsPerEpoch[nextEpoch] - offset;
+        }
+
+        if (_amount == 0) {
+            revert NothingToCompute();
+        }
+
+        uint256 computedInfectionsCached = computedInfections[nextEpoch];
+
+        // Infect from offset to offset + _amount
+        _infectRandomDoctors(healthyDoctorsNumberCached, offset, _amount, randomNumber);
+        healthyDoctorsNumber = healthyDoctorsNumberCached - _amount;
+
+        computedInfections[nextEpoch] = computedInfectionsCached + _amount;
+    }
+
+    /// @notice Starts a new epoch if the conditions are met
+    function startEpoch() external override gameOn {
+        uint256 nextEpoch = currentEpoch + 1;
+
+        if (computedInfections[nextEpoch] == 0 || computedInfections[nextEpoch] < infectedDoctorsPerEpoch[nextEpoch]) {
+            revert InfectionNotComputed();
+        }
+
+        currentEpoch = nextEpoch;
+        epochStartTime = block.timestamp;
+
+        emit DoctorsInfectedThisEpoch(nextEpoch, infectedDoctorsPerEpoch[nextEpoch]);
     }
 
     /// @notice Ends the current epoch if the conditions are met
@@ -289,6 +318,20 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
             emit GameOver();
             return;
         }
+
+        uint256 toMakeSick = healthyDoctorsNumber * _getinfectionRate(currentEpochCached + 1) / BASIS_POINT;
+
+        // Need at least one doctor to be infected, otherwise the game will never end
+        if (toMakeSick == 0) {
+            toMakeSick = 1;
+        }
+
+        // Need at least one doctor left healthy, otherwise the game could end up with no winners
+        if (toMakeSick == healthyDoctorsNumber) {
+            toMakeSick -= 1;
+        }
+
+        infectedDoctorsPerEpoch[currentEpochCached + 1] = toMakeSick;
 
         _requestRandomWords();
     }
@@ -445,15 +488,20 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
     /// @param _healthyDoctorsNumber Number of healthy doctors
     /// @param _toMakeSick Number of doctors to infect
     /// @param _randomNumber Random number provided by VRF, used to infect doctors
-    function _infectRandomDoctors(uint256 _healthyDoctorsNumber, uint256 _toMakeSick, uint256 _randomNumber) private {
-        uint256 madeSick;
+    function _infectRandomDoctors(
+        uint256 _healthyDoctorsNumber,
+        uint256 _offset,
+        uint256 _toMakeSick,
+        uint256 _randomNumber
+    ) private {
+        uint256 madeSick = _offset;
         uint256 doctorId;
         uint256 healthyDoctorId;
 
         uint256[HEALTHY_DOCTOR_SET_SIZE] memory healthyDoctorsSetCached = healthyDoctorsSet;
         uint256[DOCTORS_STATUS_SET_SIZE] memory doctorsStatusSetCached = doctorsStatusSet;
 
-        while (madeSick < _toMakeSick) {
+        while (madeSick < _offset + _toMakeSick) {
             // Shuffles the random number to get a new one
             healthyDoctorId = uint256(keccak256(abi.encode(_randomNumber, madeSick))) % _healthyDoctorsNumber;
             // Removing the doctors from the healthy doctors list and infecting him
