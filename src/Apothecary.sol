@@ -45,6 +45,10 @@ contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 
     bytes32 private immutable keyHash;
     /// @dev Max gas used on the VRF callback
     uint32 private immutable maxGas;
+    /// @dev Number of uint256 random values to receive in VRF callback
+    uint32 private constant RANDOM_NUMBERS_COUNT = 1;
+    /// @dev Number of blocks confirmations for oracle to respond to VRF request
+    uint16 private constant VRF_BLOCK_CONFIRMATIONS = 3;
 
     /**
      * Modifiers *
@@ -190,7 +194,9 @@ contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 
             _brew(_doctorId);
         } else {
             plagueDoctorVRFCaller = _doctorId;
-            vrfCoordinator.requestRandomWords(keyHash, subscriptionId, 3, maxGas, 1);
+            vrfCoordinator.requestRandomWords(
+                keyHash, subscriptionId, VRF_BLOCK_CONFIRMATIONS, maxGas, RANDOM_NUMBERS_COUNT
+            );
         }
     }
 
