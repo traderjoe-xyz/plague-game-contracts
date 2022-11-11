@@ -10,16 +10,18 @@ import "./IPlagueGame.sol";
 
 /// @author Trader Joe
 /// @title Apothecary
-/// @notice Contract for alive plague doctors to attempt brew a potion at epocs
+/// @notice Contract for alive plague doctors to attempt to brew a potion at each epoch
 contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 {
-    /// @notice Probability of a doctor getting a potion from chest. [1 - 100] typically
+    /// @notice Probability for a doctor to receive a potion when he tries to brew one.
+    /// @notice From 1 (1%) to 100 (100%)
     uint8 private difficulty;
-    /// @notice Timestamp of begining of latest (current) epoch
+    /// @notice Timestamp of the start of the latest (current) epoch
     uint112 private latestEpochTimestamp;
     /// @notice Duration of each epoch
-    uint112 public constant EPOCH = 6 hours;
-    /// @notice Token ID of plague doctor that called VRF for epoch
-    /// @dev Cache plague doctor ID to avoid multiple tx for first brew in epoch
+    uint112 public constant EPOCH_DURATION = 6 hours;
+    /// @notice Token ID of the plague doctor that called the VRF for the current epoch
+    /// @dev Cache the ID of the plague doctor that called the VRF.
+    /// @dev It avoids calling the VRF multiple times
     uint256 public plagueDoctorVRFCaller;
 
     /// @notice Contract address of plague game
@@ -132,7 +134,7 @@ contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 
     /// @notice Returns time in seconds till start of next epoch
     /// @return countdown Seconds till start of next epoch
     function getTimeToNextEpoch() external view override returns (uint256 countdown) {
-        countdown = block.timestamp - (block.timestamp % EPOCH);
+        countdown = block.timestamp - (block.timestamp % EPOCH_DURATION);
     }
 
     /// @notice Returns number of potions owned by Apothecary contract
@@ -184,7 +186,7 @@ contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 
         doctorIsAlive(_doctorId)
         hasNotBrewedInLatestEpoch(_doctorId)
     {
-        if (latestEpochTimestamp + EPOCH > block.timestamp) {
+        if (latestEpochTimestamp + EPOCH_DURATION < block.timestamp) {
             _brew(_doctorId);
         } else {
             plagueDoctorVRFCaller = _doctorId;
@@ -266,8 +268,8 @@ contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 
     /// @dev See Chainlink {VRFConsumerBaseV2-fulfillRandomWords}
     /// @param _randomWords Random numbers provided by VRF
     function fulfillRandomWords(uint256, uint256[] memory _randomWords) internal override {
-        uint256 elapsedEpochs = (block.timestamp - latestEpochTimestamp) / EPOCH;
-        latestEpochTimestamp += uint112(EPOCH * elapsedEpochs);
+        uint256 elapsedEpochs = (block.timestamp - latestEpochTimestamp) / EPOCH_DURATION;
+        latestEpochTimestamp += uint112(EPOCH_DURATION * elapsedEpochs);
         epochVRFNumber[latestEpochTimestamp] = _randomWords[0];
 
         _brew(plagueDoctorVRFCaller);
@@ -304,7 +306,7 @@ contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 
     /// @param _epochTimestamp Timestamp of epoch
     /// @return epochStart Start timestamp of epoch
     function _getEpochStart(uint112 _epochTimestamp) private pure returns (uint112 epochStart) {
-        epochStart = _epochTimestamp - (_epochTimestamp % EPOCH);
+        epochStart = _epochTimestamp - (_epochTimestamp % EPOCH_DURATION);
     }
 
     /// @notice Returns number of potions owned by Apothecary contract
