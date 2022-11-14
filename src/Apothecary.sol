@@ -29,8 +29,8 @@ contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 
     /// @notice Contract address of potions NFT
     IERC721Enumerable public immutable override potions;
 
-    /// @notice Brew results of a plague doctor
-    mapping(uint256 => uint8[]) private brewResults;
+    /// @notice Brew logs of all plague doctors
+    BrewLog[] public brewLogs;
     /// @notice Keep track if plague doctor has tried to brew in an epoch
     /// @dev Mapping from an epoch timestamp to plague doctor ID to tried state
     mapping(uint112 => mapping(uint256 => bool)) private triedBrewInEpoch;
@@ -92,6 +92,7 @@ contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 
         plagueGame = _plagueGame;
         potions = _potions;
         difficulty = _difficulty;
+        latestEpochTimestamp = uint112(block.timestamp);
 
         // VRF setup
         vrfCoordinator = _vrfCoordinator;
@@ -104,33 +105,45 @@ contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 
      * View Functions *
      */
 
-    /// @notice Returns the recent brew results of a plague doctor
-    /// @dev Returns [n] number of brew results if doctor has brewed up to [n] times
-    /// @param _doctorId Token ID of plague doctor
-    /// @param _count Number of latest brew results to return
-    /// @return latestBrewResults Last [n] brew results
-    function getLatestBrews(uint256 _doctorId, uint256 _count)
+    /// @notice Returns the [n] latest brew logs
+    /// @dev Returns [n] number of brew logs if all brew logs is up to [n]
+    /// @param _count Number of latest brew logs to return
+    /// @return latestBrewLogs Last [n] brew logs
+    function getBrewLogs(uint256 _count)
         external
         view
         override
-        returns (uint8[] memory latestBrewResults)
+        returns (BrewLog[] memory latestBrewLogs)
     {
-        uint256 doctorBrewCount = brewResults[_doctorId].length;
+        uint256 i = brewLogs.length - 1;
+        while (i >= 0 || latestBrewLogs.length < _count) {
+            latestBrewLogs[latestBrewLogs.length] = (brewLogs[i]);
 
-        if (doctorBrewCount > _count) {
-            uint256 offset = doctorBrewCount - _count;
-            for (uint256 i = offset; i < _count + offset;) {
-                latestBrewResults[i] = brewResults[_doctorId][i + offset];
-                unchecked {
-                    ++i;
-                }
+            unchecked {
+                --i;
             }
-        } else {
-            for (uint256 i = 0; i < doctorBrewCount;) {
-                latestBrewResults[i] = brewResults[_doctorId][i];
-                unchecked {
-                    ++i;
-                }
+        }
+    }
+
+    /// @notice Returns the [n] brew logs of a plague doctor
+    /// @dev Returns [n] number of brew logs if plague doctor has brewed up to [n] times
+    /// @param _doctorId Token ID of plague doctor
+    /// @param _count Number of latest brew logs to return
+    /// @return latestBrewLogs Last [n] brew logs of plague doctor
+    function getBrewLogs(uint256 _doctorId, uint256 _count)
+        external
+        view
+        override
+        returns (BrewLog[] memory latestBrewLogs)
+    {
+        uint256 i = brewLogs.length - 1;
+        while (i >= 0 || latestBrewLogs.length < _count) {
+            if (brewLogs[i].doctorId == _doctorId) {
+               latestBrewLogs[latestBrewLogs.length] = (brewLogs[i]);
+            }
+
+            unchecked {
+                --i;
             }
         }
     }
@@ -290,6 +303,7 @@ contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 
             revert GameIsClosed();
         }
 
+        BrewLog memory brewLog;
         triedBrewInEpoch[latestEpochTimestamp][_doctorId] = true;
         bytes32 hash = keccak256(abi.encodePacked(epochVRFNumber[latestEpochTimestamp], _doctorId));
 
@@ -298,14 +312,18 @@ contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 
                 revert PotionsNotEnough(_getPotionsLeft());
             }
 
-            brewResults[_doctorId].push(1);
+            brewLog.brewPotion = true;
             uint256 potionId = _getPotionIds(1)[0];
             potions.safeTransferFrom(address(this), potions.ownerOf(_doctorId), potionId);
 
             emit SentPotion(_doctorId, potionId);
         } else {
-            brewResults[_doctorId].push(0);
+            brewLog.brewPotion = false;
         }
+
+        brewLog.doctorId = _doctorId;
+        brewLog.timestamp = uint112(block.timestamp);
+        brewLogs.push(brewLog);
     }
 
     /// @notice Returns period start of epoch timestamp

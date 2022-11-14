@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.13;
 
-// import "openzeppelin/token/ERC721/extensions/IERC721Enumerable.sol";
 import "./IPlagueGame.sol";
 
 error DoctorIsDead();
@@ -16,14 +15,25 @@ interface IApothecary {
 
     event PotionsRemoved(uint256[] potions);
 
+    struct BrewLog {
+        uint112 timestamp;
+        uint256 doctorId;
+        bool brewPotion;
+    }
+
     function plagueGame() external view returns (IPlagueGame);
 
     function potions() external view returns (IERC721Enumerable);
 
-    function getLatestBrews(uint256 _doctorId, uint256 _count)
+    function getBrewLogs(uint256 _count)
         external
         view
-        returns (uint8[] memory latestBrewResults);
+        returns (BrewLog[] memory latestBrewLogs);
+
+    function getBrewLogs(uint256 _doctorId, uint256 _count)
+        external
+        view
+        returns (BrewLog[] memory latestBrewLogs);
 
     function getTimeToNextEpoch() external view returns (uint256 countdown);
 
