@@ -38,7 +38,7 @@ interface IPlagueGame {
     event GameStarted();
     event RandomWordsFulfilled(uint256 epoch, uint256 requestId);
     event DoctorsInfectedThisEpoch(uint256 indexed epoch, uint256 infectedDoctors);
-    event DoctorsDeadThisEpoch(uint256 indexed epoch, uint256 deadDoctors);
+    event EpochEnded(uint256 indexed epoch);
     event GameOver();
     event PrizeWithdrawalAllowed(bool newValue);
     event PrizeWithdrawn(uint256 indexed doctorId, uint256 prize);
@@ -64,7 +64,7 @@ interface IPlagueGame {
     function doctorStatus(uint256 doctorId) external view returns (Status);
 
     function infectedDoctorsPerEpoch(uint256 epoch) external view returns (uint256);
-    function deadDoctorsPerEpoch(uint256 epoch) external view returns (uint256);
+    function curedDoctorsPerEpoch(uint256 epoch) external view returns (uint256);
     function withdrewPrize(uint256 doctorId) external view returns (bool);
 
     function isGameOver() external view returns (bool);

@@ -35,8 +35,8 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
 
     /// @notice Stores the number of infected doctors at each epoch. This is purely for the front-end
     mapping(uint256 => uint256) public override infectedDoctorsPerEpoch;
-    /// @notice Stores the number of dead doctors at each epoch. This is purely for the front-end
-    mapping(uint256 => uint256) public override deadDoctorsPerEpoch;
+    /// @notice Stores the number of cured doctors at each epoch. This is purely for the front-end
+    mapping(uint256 => uint256) public override curedDoctorsPerEpoch;
     /// @notice Stores if a user already claimed his prize for a doctors he owns
     mapping(uint256 => bool) public override withdrewPrize;
     /// @notice VRF request IDs for each epoch
@@ -161,7 +161,7 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
 
         // Initialize the doctors status set on first call
         if (lastHealthyDoctorsSetItemUpdatedCached == 0) {
-            for (uint256 j = 0; j < 79; ++j) {
+            for (uint256 j = 0; j < DOCTORS_STATUS_SET_SIZE; ++j) {
                 doctorsStatusSet[j] = 0x5555555555555555555555555555555555555555555555555555555555555555;
             }
         }
@@ -242,7 +242,7 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
         _requestRandomWords();
     }
 
-    function computeInfectedDoctors(uint256 _amount) external {
+    function computeInfectedDoctors(uint256 _amount) external gameOn {
         uint256 nextEpoch = currentEpoch + 1;
 
         uint256 healthyDoctorsNumberCached = healthyDoctorsNumber;
@@ -301,17 +301,16 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
 
         epochEnded[currentEpochCached] = true;
 
-        uint256 deads;
-        for (uint256 i = 0; i < doctorNumber; ++i) {
-            if (doctorStatus(i) == Status.Infected) {
-                _updateDoctorStatus(i, Status.Dead);
-                ++deads;
-                emit Dead(i);
-            }
+        // Updates the infected doctors statuses to Dead
+        // 0x5555...555 means 0b01010101...01, all doctors are healthy
+        // For infected doctors that have a [1 0] status, this sets the status to [0 0]
+        // For healthy doctors that have a [0 1] status, this doesn't change the status
+        // For dead doctors that have a [0 0] status, this doesn't change the status
+        for (uint256 j = 0; j < DOCTORS_STATUS_SET_SIZE; ++j) {
+            doctorsStatusSet[j] &= 0x5555555555555555555555555555555555555555555555555555555555555555;
         }
 
-        deadDoctorsPerEpoch[currentEpochCached] = deads;
-        emit DoctorsDeadThisEpoch(currentEpochCached, deads);
+        emit EpochEnded(currentEpochCached);
 
         if (healthyDoctorsNumber <= playerNumberToEndGame) {
             isGameOver = true;
@@ -349,6 +348,7 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
             revert DoctorNotInfected();
         }
 
+        curedDoctorsPerEpoch[currentEpoch] += 1;
         _updateDoctorStatus(_doctorId, Status.Healthy);
         _addDoctorToSet(_doctorId);
         _burnPotion(_potionId);
