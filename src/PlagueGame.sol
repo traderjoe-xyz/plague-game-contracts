@@ -222,24 +222,10 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
             revert GameNotStarted();
         }
 
-        uint256 toMakeSick = healthyDoctorsNumber * _getinfectionRate(1) / BASIS_POINT;
-
-        // Need at least one doctor to be infected, otherwise the game will never end
-        if (toMakeSick == 0) {
-            toMakeSick = 1;
-        }
-
-        // Need at least one doctor left healthy, otherwise the game could end up with no winners
-        if (toMakeSick == healthyDoctorsNumber) {
-            toMakeSick -= 1;
-        }
-
-        infectedDoctorsPerEpoch[1] = toMakeSick;
+        _initiateNewEpoch(1);
 
         isGameStarted = true;
         emit GameStarted();
-
-        _requestRandomWords();
     }
 
     function computeInfectedDoctors(uint256 _amount) external gameOn {
@@ -315,10 +301,13 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
         if (healthyDoctorsNumber <= playerNumberToEndGame) {
             isGameOver = true;
             emit GameOver();
-            return;
+        } else {
+            _initiateNewEpoch(currentEpochCached + 1);
         }
+    }
 
-        uint256 toMakeSick = healthyDoctorsNumber * _getinfectionRate(currentEpochCached + 1) / BASIS_POINT;
+    function _initiateNewEpoch(uint256 _nextEpoch) private {
+        uint256 toMakeSick = healthyDoctorsNumber * _getinfectionRate(_nextEpoch) / BASIS_POINT;
 
         // Need at least one doctor to be infected, otherwise the game will never end
         if (toMakeSick == 0) {
@@ -330,7 +319,7 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
             toMakeSick -= 1;
         }
 
-        infectedDoctorsPerEpoch[currentEpochCached + 1] = toMakeSick;
+        infectedDoctorsPerEpoch[_nextEpoch] = toMakeSick;
 
         _requestRandomWords();
     }
