@@ -45,10 +45,8 @@ interface IPlagueGame {
     event PrizePotIncreased(uint256 amount);
     event FundsEmergencyWithdraw(uint256 amount);
 
-    /// Individual events
-    event Sick(uint256 indexed doctorId);
-    event Cured(uint256 indexed doctorId);
-    event Dead(uint256 indexed doctorId);
+    /// Doctor event
+    event DoctorCured(uint256 indexed doctorId, uint256 indexed potionId, uint256 indexed epoch);
 
     function doctors() external view returns (IERC721Enumerable);
     function potions() external view returns (IERC721Enumerable);
@@ -61,6 +59,7 @@ interface IPlagueGame {
     function epochDuration() external view returns (uint256);
     function epochStartTime() external view returns (uint256);
 
+    function healthyDoctorsNumber() external view returns (uint256);
     function doctorStatus(uint256 doctorId) external view returns (Status);
 
     function infectedDoctorsPerEpoch(uint256 epoch) external view returns (uint256);
@@ -74,6 +73,7 @@ interface IPlagueGame {
 
     function initializeGame(uint256 _amount) external;
     function allowPrizeWithdraw(bool _status) external;
+    function computeInfectedDoctors(uint256 _amount) external;
     function startGame() external;
     function startEpoch() external;
     function endEpoch() external;

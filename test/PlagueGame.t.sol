@@ -156,7 +156,8 @@ contract PlagueGameTest is Test {
 
         assertEq(plagueGame.isGameStarted(), true, "game should be started");
 
-        for (uint256 i = 0; i < epochNumber + 10; ++i) {
+        uint256 i;
+        while (true) {
             uint256 healthyDoctorsEndOfEpoch = plagueGame.healthyDoctorsNumber();
 
             vm.expectRevert(InfectionNotComputed.selector);
@@ -254,6 +255,8 @@ contract PlagueGameTest is Test {
             );
 
             assertEq(_fetchDoctorsToStatus(IPlagueGame.Status.Infected).length, 0, "No more infected doctors");
+
+            ++i;
         }
     }
 
