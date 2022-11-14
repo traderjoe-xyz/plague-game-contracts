@@ -114,6 +114,30 @@ contract PlagueGameTest is Test {
         assertEq(plagueGame.prizeWithdrawalAllowed(), false, "Withdrawals should be closed");
     }
 
+    function testNoSellout() public {
+        doctors = new ERC721Mock();
+
+        collectionSize /= 2;
+        doctors.mint(collectionSize);
+
+        _gameSetup();
+        _initializeGame();
+
+        doctors.mint(10);
+        uint256 extraMintedDoctorId = collectionSize;
+
+        assertEq(
+            uint256(plagueGame.doctorStatus(extraMintedDoctorId - 1)),
+            uint256(IPlagueGame.Status.Healthy),
+            "Last doctor of the set should be healthy"
+        );
+        assertEq(
+            uint256(plagueGame.doctorStatus(extraMintedDoctorId)),
+            uint256(IPlagueGame.Status.Dead),
+            "Extra doctors minted after game start should be considered dead"
+        );
+    }
+
     function testGame() public {
         assertEq(plagueGame.currentEpoch(), 0, "starting epoch should be 0");
         assertEq(plagueGame.healthyDoctorsNumber(), collectionSize, "all doctors should be healthy");

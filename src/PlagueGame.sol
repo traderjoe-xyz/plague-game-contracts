@@ -161,9 +161,13 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
 
         // Initialize the doctors status set on first call
         if (lastHealthyDoctorsSetItemUpdatedCached == 0) {
-            for (uint256 j = 0; j < DOCTORS_STATUS_SET_SIZE; ++j) {
+            uint256 arrayLengthToInitialize = (doctorNumber / 128);
+            for (uint256 j = 0; j < arrayLengthToInitialize; ++j) {
                 doctorsStatusSet[j] = 0x5555555555555555555555555555555555555555555555555555555555555555;
             }
+
+            doctorsStatusSet[arrayLengthToInitialize] =
+                0x5555555555555555555555555555555555555555555555555555555555555555 >> (128 - (doctorNumber % 128)) * 2;
         }
 
         for (uint256 j = lastHealthyDoctorsSetItemUpdatedCached; j < newlastHealthyDoctorsSetItemUpdated; j++) {
