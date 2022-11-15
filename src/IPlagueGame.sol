@@ -7,7 +7,7 @@ error InvalidPlayerNumberToEndGame();
 error InvalidInfectionPercentage();
 error InvalidEpochDuration();
 error TooManyInitialized();
-error CollectionTooBig();
+error InvalidCollection();
 error GameAlreadyStarted();
 error GameNotStarted();
 error GameNotOver();
