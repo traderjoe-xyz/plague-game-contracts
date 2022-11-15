@@ -19,7 +19,7 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
     /// @notice Total number of epochs with a defined infection percentage. If the game lasts longer, the last percentage defined will be used
     uint256 public immutable override totalDefinedEpochNumber;
     /// @dev Number of doctors in the collection
-    uint256 private immutable doctorNumber;
+    uint256 private immutable _doctorNumber;
 
     /// @notice Number of healthy doctors
     uint256 public override healthyDoctorsNumber;
@@ -38,11 +38,11 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
     /// @notice Stores if a user already claimed his prize for a doctors he owns
     mapping(uint256 => bool) public override withdrewPrize;
     /// @notice VRF request IDs for each epoch
-    mapping(uint256 => uint256) private epochVRFRequest;
+    mapping(uint256 => uint256) private _epochVRFRequest;
     /// @notice VRF response for each epoch
-    mapping(uint256 => uint256) private epochVRFNumber;
+    mapping(uint256 => uint256) private _epochVRFNumber;
     /// @dev Stores if an epoch has ended
-    mapping(uint256 => bool) private epochEnded;
+    mapping(uint256 => bool) private _epochEnded;
 
     /// @notice Whether the game is over (true), or not (false)
     bool public override isGameOver;
@@ -58,17 +58,17 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
     // 16 * 16 = 256 -> 16 doctors IDs per slot
     // 10k / 16 = 625 -> For 10k, need 625 slots
     uint256 private constant HEALTHY_DOCTOR_SET_SIZE = 625;
-    uint256[HEALTHY_DOCTOR_SET_SIZE] private healthyDoctorsSet;
+    uint256[HEALTHY_DOCTOR_SET_SIZE] private _healthyDoctorsSet;
     uint256 private constant DOCTOR_ID_MASK = 0xFFFF;
     /// @dev Array containing the status of every doctor
     /// A doctor status is stored in a 2 bits integer.
     // 256 / 2 = 128 doctors per slot
     // 10k / 128 = 78.125 need 79 slots
     uint256 private constant DOCTORS_STATUS_SET_SIZE = 79;
-    uint256[DOCTORS_STATUS_SET_SIZE] private doctorsStatusSet;
+    uint256[DOCTORS_STATUS_SET_SIZE] private _doctorsStatusSet;
     uint256 private constant DOCTOR_STATUS_MASK = 0x03;
     /// @dev Used on contract initialization
-    uint256 private lastHealthyDoctorsSetItemUpdated;
+    uint256 private _lastHealthyDoctorsSetItemUpdated;
     /// @dev Initialize all doctor statuses to healthy
     /// Equivalent to 0b01 repeated 128 times
     uint256 private constant HEALTHY_DOCTOR_ARRAY_ITEM =
@@ -76,16 +76,16 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
 
     /// @dev Keeps track of the doctors already infected for an epoch
     /// Used to paginate startEpoch
-    mapping(uint256 => uint256) private computedInfections;
+    mapping(uint256 => uint256) private _computedInfections;
 
     /// @dev Address of the VRF coordinator
-    VRFCoordinatorV2Interface private immutable vrfCoordinator;
+    VRFCoordinatorV2Interface private immutable _vrfCoordinator;
     /// @dev VRF subscription ID
-    uint64 private immutable subscriptionId;
+    uint64 private immutable _subscriptionId;
     /// @dev VRF key hash
-    bytes32 private immutable keyHash;
+    bytes32 private immutable _keyHash;
     /// @dev Max gas used on the VRF callback
-    uint32 private immutable maxGas;
+    uint32 private immutable _maxGas;
 
     /// @dev Basis point to calulate percentages
     uint256 private constant BASIS_POINT = 10_000;
@@ -103,21 +103,21 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
     /// @param _infectionPercentagePerEpoch Percentage of doctors that will  be infected each epoch
     /// @param _playerNumberToEndGame Number of doctors still alive triggering the end of the game
     /// @param _epochDuration Duration of each epoch in seconds
-    /// @param _vrfCoordinator Address of the VRF coordinator
-    /// @param _subscriptionId VRF subscription ID
-    /// @param _keyHash VRF key hash
-    /// @param _maxGas Max gas used on the VRF callback
+    /// @param vrfCoordinator_ Address of the VRF coordinator
+    /// @param subscriptionId_ VRF subscription ID
+    /// @param keyHash_ VRF key hash
+    /// @param maxGas_ Max gas used on the VRF callback
     constructor(
         IERC721Enumerable _doctors,
         IERC721Enumerable _potions,
         uint256[] memory _infectionPercentagePerEpoch,
         uint256 _playerNumberToEndGame,
         uint256 _epochDuration,
-        VRFCoordinatorV2Interface _vrfCoordinator,
-        uint64 _subscriptionId,
-        bytes32 _keyHash,
-        uint32 _maxGas
-    ) VRFConsumerBaseV2(address(_vrfCoordinator)) {
+        VRFCoordinatorV2Interface vrfCoordinator_,
+        uint64 subscriptionId_,
+        bytes32 keyHash_,
+        uint32 maxGas_
+    ) VRFConsumerBaseV2(address(vrfCoordinator_)) {
         if (_playerNumberToEndGame == 0) {
             revert InvalidPlayerNumberToEndGame();
         }
@@ -133,10 +133,10 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
         }
 
         doctors = _doctors;
-        vrfCoordinator = _vrfCoordinator;
-        doctorNumber = _doctors.totalSupply();
+        _vrfCoordinator = vrfCoordinator_;
+        _doctorNumber = _doctors.totalSupply();
 
-        if (doctorNumber > 10_000) {
+        if (_doctorNumber > 10_000) {
             revert CollectionTooBig();
         }
 
@@ -147,16 +147,16 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
         epochDuration = _epochDuration;
 
         // VRF setup
-        subscriptionId = _subscriptionId;
-        keyHash = _keyHash;
-        maxGas = _maxGas;
+        _subscriptionId = subscriptionId_;
+        _keyHash = keyHash_;
+        _maxGas = maxGas_;
     }
 
     /// @notice Initializes the game
     /// @dev This function is very expensive in gas, that's why it needs to be called several times
-    /// @param _amount Amount of healthyDoctorsSet items to initialize
+    /// @param _amount Amount of _healthyDoctorsSet items to initialize
     function initializeGame(uint256 _amount) external override {
-        uint256 lastHealthyDoctorsSetItemUpdatedCached = lastHealthyDoctorsSetItemUpdated;
+        uint256 lastHealthyDoctorsSetItemUpdatedCached = _lastHealthyDoctorsSetItemUpdated;
         uint256 newlastHealthyDoctorsSetItemUpdated = lastHealthyDoctorsSetItemUpdatedCached + _amount;
 
         if (newlastHealthyDoctorsSetItemUpdated > HEALTHY_DOCTOR_SET_SIZE) {
@@ -165,12 +165,12 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
 
         // Initialize the doctors status set on first call
         if (lastHealthyDoctorsSetItemUpdatedCached == 0) {
-            uint256 arrayLengthToInitialize = (doctorNumber / 128);
+            uint256 arrayLengthToInitialize = (_doctorNumber / 128);
             for (uint256 j = 0; j < arrayLengthToInitialize; ++j) {
-                doctorsStatusSet[j] = HEALTHY_DOCTOR_ARRAY_ITEM;
+                _doctorsStatusSet[j] = HEALTHY_DOCTOR_ARRAY_ITEM;
             }
 
-            doctorsStatusSet[arrayLengthToInitialize] = HEALTHY_DOCTOR_ARRAY_ITEM >> (128 - (doctorNumber % 128)) * 2;
+            _doctorsStatusSet[arrayLengthToInitialize] = HEALTHY_DOCTOR_ARRAY_ITEM >> (128 - (_doctorNumber % 128)) * 2;
         }
 
         for (uint256 j = lastHealthyDoctorsSetItemUpdatedCached; j < newlastHealthyDoctorsSetItemUpdated; j++) {
@@ -179,13 +179,13 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
                 doctorId += (k + 16 * j) << (k * 16);
             }
 
-            healthyDoctorsSet[j] = doctorId;
+            _healthyDoctorsSet[j] = doctorId;
         }
 
-        lastHealthyDoctorsSetItemUpdated = newlastHealthyDoctorsSetItemUpdated;
+        _lastHealthyDoctorsSetItemUpdated = newlastHealthyDoctorsSetItemUpdated;
 
         if (newlastHealthyDoctorsSetItemUpdated == HEALTHY_DOCTOR_SET_SIZE) {
-            healthyDoctorsNumber = doctorNumber;
+            healthyDoctorsNumber = _doctorNumber;
         }
     }
 
@@ -195,7 +195,7 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
             revert GameAlreadyStarted();
         }
 
-        if (healthyDoctorsNumber < doctorNumber) {
+        if (healthyDoctorsNumber < _doctorNumber) {
             revert GameNotStarted();
         }
 
@@ -213,12 +213,12 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
 
         uint256 healthyDoctorsNumberCached = healthyDoctorsNumber;
 
-        uint256 randomNumber = epochVRFNumber[epochVRFRequest[nextEpoch]];
+        uint256 randomNumber = _epochVRFNumber[_epochVRFRequest[nextEpoch]];
         if (randomNumber == 0) {
             revert VRFResponseMissing();
         }
 
-        uint256 offset = computedInfections[nextEpoch];
+        uint256 offset = _computedInfections[nextEpoch];
 
         // Only infect the necessary amount of doctors
         if (offset + _amount > infectedDoctorsPerEpoch[nextEpoch]) {
@@ -229,20 +229,21 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
             revert NothingToCompute();
         }
 
-        uint256 computedInfectionsCached = computedInfections[nextEpoch];
+        uint256 computedInfectionsCached = _computedInfections[nextEpoch];
 
         // Infect from offset to offset + _amount
         _infectRandomDoctors(healthyDoctorsNumberCached, offset, _amount, randomNumber);
         healthyDoctorsNumber = healthyDoctorsNumberCached - _amount;
 
-        computedInfections[nextEpoch] = computedInfectionsCached + _amount;
+        _computedInfections[nextEpoch] = computedInfectionsCached + _amount;
     }
 
     /// @notice Starts a new epoch if the conditions are met
     function startEpoch() external override gameOn {
         uint256 nextEpoch = currentEpoch + 1;
 
-        if (computedInfections[nextEpoch] == 0 || computedInfections[nextEpoch] < infectedDoctorsPerEpoch[nextEpoch]) {
+        if (_computedInfections[nextEpoch] == 0 || _computedInfections[nextEpoch] < infectedDoctorsPerEpoch[nextEpoch])
+        {
             revert InfectionNotComputed();
         }
 
@@ -256,7 +257,7 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
     function endEpoch() external override gameOn {
         uint256 currentEpochCached = currentEpoch;
 
-        if (epochEnded[currentEpochCached] == true) {
+        if (_epochEnded[currentEpochCached] == true) {
             revert EpochAlreadyEnded();
         }
 
@@ -264,7 +265,7 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
             revert EpochNotReadyToEnd();
         }
 
-        epochEnded[currentEpochCached] = true;
+        _epochEnded[currentEpochCached] = true;
 
         // Updates the infected doctors statuses to Dead
         // 0x5555...555 means 0b01010101...01, all doctors are healthy
@@ -272,7 +273,7 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
         // For healthy doctors that have a 0b01 status, this doesn't change the status
         // For dead doctors that have a 0b00 status, this doesn't change the status
         for (uint256 i = 0; i < DOCTORS_STATUS_SET_SIZE; ++i) {
-            doctorsStatusSet[i] &= HEALTHY_DOCTOR_ARRAY_ITEM;
+            _doctorsStatusSet[i] &= HEALTHY_DOCTOR_ARRAY_ITEM;
         }
 
         emit EpochEnded(currentEpochCached);
@@ -372,7 +373,7 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
     }
 
     function doctorStatus(uint256 _doctorId) public view override returns (Status) {
-        uint256 statusSetItem = doctorsStatusSet[_doctorId / 128];
+        uint256 statusSetItem = _doctorsStatusSet[_doctorId / 128];
         uint256 shift = (_doctorId % 128) * 2;
         uint256 doctorStatusUint = (statusSetItem >> shift) & DOCTOR_STATUS_MASK;
 
@@ -410,21 +411,21 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
     /// @param _doctorId ID of the doctor to update
     /// @param _newStatus New status of the doctor
     function _updateDoctorStatusStorage(uint256 _doctorId, Status _newStatus) private {
-        doctorsStatusSet[_doctorId / 128] =
-            _updateDoctorStatusArrayItem(doctorsStatusSet[_doctorId / 128], _doctorId, _newStatus);
+        _doctorsStatusSet[_doctorId / 128] =
+            _updateDoctorStatusArrayItem(_doctorsStatusSet[_doctorId / 128], _doctorId, _newStatus);
     }
 
     /// @dev Updates the doctor status in a cached array
-    /// @param _doctorsStatusSet Array of doctors statuses cached in memory
+    /// @param _doctorsStatusSetMemory Array of doctors statuses cached in memory
     /// @param _doctorId ID of the doctor to update
     /// @param _newStatus New status of the doctor
     function _updateDoctorStatusMemory(
-        uint256[DOCTORS_STATUS_SET_SIZE] memory _doctorsStatusSet,
+        uint256[DOCTORS_STATUS_SET_SIZE] memory _doctorsStatusSetMemory,
         uint256 _doctorId,
         Status _newStatus
     ) private pure {
-        _doctorsStatusSet[_doctorId / 128] =
-            _updateDoctorStatusArrayItem(_doctorsStatusSet[_doctorId / 128], _doctorId, _newStatus);
+        _doctorsStatusSetMemory[_doctorId / 128] =
+            _updateDoctorStatusArrayItem(_doctorsStatusSetMemory[_doctorId / 128], _doctorId, _newStatus);
     }
 
     /// @dev Updates the status of a doctor situated in the given array item
@@ -448,28 +449,28 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
     }
 
     /// @dev Removes a doctor from the set of healthy doctors cached in memory
-    /// @param _healthyDoctorsSet Array of doctors IDs cached in memory
+    /// @param _healthyDoctorsSetMemory Array of doctors IDs cached in memory
     /// @param _healthyDoctorsNumber Total number of doctors in the array
     /// @param _index Index of the doctor to remove
     /// @return doctorId ID of the doctor removed
     function _removeDoctorFromSet(
-        uint256[HEALTHY_DOCTOR_SET_SIZE] memory _healthyDoctorsSet,
+        uint256[HEALTHY_DOCTOR_SET_SIZE] memory _healthyDoctorsSetMemory,
         uint256 _healthyDoctorsNumber,
         uint256 _index
     ) private pure returns (uint256) {
         // Get the last doctor ID
-        uint256 lastDoctorId = _getDoctorIdFromSetMemory(_healthyDoctorsSet, _healthyDoctorsNumber - 1);
+        uint256 lastDoctorId = _getDoctorIdFromSetMemory(_healthyDoctorsSetMemory, _healthyDoctorsNumber - 1);
 
         // Get the doctor ID at the index
-        uint256 doctorSetItem = _healthyDoctorsSet[_index / 16];
-        uint256 doctorId = _getDoctorIdFromSetMemory(_healthyDoctorsSet, _index);
+        uint256 doctorSetItem = _healthyDoctorsSetMemory[_index / 16];
+        uint256 doctorId = _getDoctorIdFromSetMemory(_healthyDoctorsSetMemory, _index);
 
         // Mask the doctor ID at the index
         uint256 offset = (_index % 16) * 16;
         doctorSetItem &= ~(DOCTOR_ID_MASK << offset);
         // Replaces it by the last doctor Id of the array
         doctorSetItem |= (lastDoctorId << offset);
-        _healthyDoctorsSet[_index / 16] = doctorSetItem;
+        _healthyDoctorsSetMemory[_index / 16] = doctorSetItem;
 
         return doctorId;
     }
@@ -478,27 +479,27 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
     /// @param _doctorId ID of the doctor to add
     function _addDoctorToHealthySet(uint256 _doctorId) private {
         // Loads the array item containing the doctor Id
-        uint256 lastDoctorSetItem = healthyDoctorsSet[healthyDoctorsNumber / 16];
+        uint256 lastDoctorSetItem = _healthyDoctorsSet[healthyDoctorsNumber / 16];
         // Mask the previous value located at the first unused index
         uint256 offset = (healthyDoctorsNumber % 16) * 16;
         lastDoctorSetItem &= ~(DOCTOR_ID_MASK << offset);
         // Add the new doctor Id
         lastDoctorSetItem |= (_doctorId << offset);
         //Update storage
-        healthyDoctorsSet[healthyDoctorsNumber / 16] = lastDoctorSetItem;
+        _healthyDoctorsSet[healthyDoctorsNumber / 16] = lastDoctorSetItem;
         ++healthyDoctorsNumber;
     }
 
     /// @dev Gets the doctor Id from the set of healthy doctors cached in memory
-    /// @param _healthyDoctorsSet Array of doctors IDs cached in memory
+    /// @param _healthyDoctorsSetMemory Array of doctors IDs cached in memory
     /// @param _index Index of the doctor to get from the array
     /// @return doctorId ID of the doctor
-    function _getDoctorIdFromSetMemory(uint256[HEALTHY_DOCTOR_SET_SIZE] memory _healthyDoctorsSet, uint256 _index)
+    function _getDoctorIdFromSetMemory(uint256[HEALTHY_DOCTOR_SET_SIZE] memory _healthyDoctorsSetMemory, uint256 _index)
         private
         pure
         returns (uint256)
     {
-        uint256 doctorSetItem = _healthyDoctorsSet[_index / 16];
+        uint256 doctorSetItem = _healthyDoctorsSetMemory[_index / 16];
         uint256 offset = (_index % 16) * 16;
 
         return ((doctorSetItem >> offset) & DOCTOR_ID_MASK);
@@ -530,8 +531,8 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
         uint256 doctorId;
         uint256 healthyDoctorId;
 
-        uint256[HEALTHY_DOCTOR_SET_SIZE] memory healthyDoctorsSetCached = healthyDoctorsSet;
-        uint256[DOCTORS_STATUS_SET_SIZE] memory doctorsStatusSetCached = doctorsStatusSet;
+        uint256[HEALTHY_DOCTOR_SET_SIZE] memory healthyDoctorsSetCached = _healthyDoctorsSet;
+        uint256[DOCTORS_STATUS_SET_SIZE] memory doctorsStatusSetCached = _doctorsStatusSet;
 
         while (madeSick < _offset + _toMakeSick) {
             // Shuffles the random number to get a new one
@@ -544,8 +545,8 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
             ++madeSick;
         }
 
-        healthyDoctorsSet = healthyDoctorsSetCached;
-        doctorsStatusSet = doctorsStatusSetCached;
+        _healthyDoctorsSet = healthyDoctorsSetCached;
+        _doctorsStatusSet = doctorsStatusSetCached;
     }
 
     /// @dev Burns a potion NFT
@@ -558,11 +559,11 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
     function _requestRandomWords() private {
         uint256 nextEpochCached = currentEpoch + 1;
         // Extra safety check, but that shouldn't happen
-        if (epochVRFNumber[epochVRFRequest[nextEpochCached]] != 0) {
+        if (_epochVRFNumber[_epochVRFRequest[nextEpochCached]] != 0) {
             revert VRFRequestAlreadyAsked();
         }
 
-        epochVRFRequest[nextEpochCached] = vrfCoordinator.requestRandomWords(keyHash, subscriptionId, 3, maxGas, 1);
+        _epochVRFRequest[nextEpochCached] = _vrfCoordinator.requestRandomWords(_keyHash, _subscriptionId, 3, _maxGas, 1);
     }
 
     /// @dev Callback function used by VRF Coordinator
@@ -570,17 +571,17 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
     /// @param _randomWords Random numbers provided by VRF
     function fulfillRandomWords(uint256 _requestId, uint256[] memory _randomWords) internal override {
         uint256 nextEpochCached = currentEpoch + 1;
-        uint256 epochVRFRequestCached = epochVRFRequest[nextEpochCached];
+        uint256 epochVRFRequestCached = _epochVRFRequest[nextEpochCached];
 
         if (_requestId != epochVRFRequestCached) {
             revert InvalidRequestId();
         }
 
-        if (epochVRFNumber[epochVRFRequestCached] != 0) {
+        if (_epochVRFNumber[epochVRFRequestCached] != 0) {
             revert VRFRequestAlreadyAsked();
         }
 
-        epochVRFNumber[_requestId] = _randomWords[0];
+        _epochVRFNumber[_requestId] = _randomWords[0];
 
         emit RandomWordsFulfilled(nextEpochCached, _requestId);
     }
