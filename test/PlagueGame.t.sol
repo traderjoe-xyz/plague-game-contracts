@@ -133,8 +133,6 @@ contract PlagueGameTest is Test {
         vm.expectRevert(TooManyInitialized.selector);
         plagueGame.initializeGame(1);
 
-        plagueGame.startGame();
-
         doctors.mint(10);
         uint256 extraMintedDoctorId = collectionSize;
 
@@ -147,6 +145,14 @@ contract PlagueGameTest is Test {
             uint256(plagueGame.doctorStatus(extraMintedDoctorId)),
             uint256(IPlagueGame.Status.Dead),
             "Extra doctors minted after game start should be considered dead"
+        );
+
+        testFullGame(0);
+
+        assertEq(
+            uint256(plagueGame.doctorStatus(extraMintedDoctorId)),
+            uint256(IPlagueGame.Status.Dead),
+            "Extra doctors minted after game start should still be dead at the end of the game"
         );
     }
 
@@ -243,7 +249,27 @@ contract PlagueGameTest is Test {
 
                 assertEq(plagueGame.isGameOver(), true, "Game should be over");
 
-                assertLe(healthyDoctors.length, playerNumberToEndGame, "There should be less than 100 players");
+                assertLe(healthyDoctors.length, playerNumberToEndGame, "There should be less than 10 players");
+
+                // All remaining doctors should in the healthy doctors set
+                uint256 numberOfWinners = plagueGame.healthyDoctorsNumber();
+
+                uint256 firstStorageSlotForSet = 14;
+                uint256 setSlot = uint256(vm.load(address(plagueGame), bytes32(firstStorageSlotForSet)));
+
+                for (uint256 j = 0; j < numberOfWinners; j++) {
+                    uint256 offset = (j % 16) * 16;
+
+                    uint256 doctorId = ((setSlot >> offset) & 0xFFFF);
+
+                    console.log(doctorId);
+
+                    assertEq(
+                        uint256(plagueGame.doctorStatus(doctorId)),
+                        uint256(IPlagueGame.Status.Healthy),
+                        "Doctor should be healthy"
+                    );
+                }
 
                 break;
             } else {
