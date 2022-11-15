@@ -70,7 +70,7 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
     uint256[DOCTORS_STATUS_SET_SIZE] private _doctorsStatusSet;
     uint256 private constant DOCTOR_STATUS_MASK = 0x03;
     /// @dev Used on contract initialization
-    uint256 private _lastHealthyDoctorsSetItemUpdated;
+    uint256 private _lastDoctorAdded;
     /// @dev Initialize all doctor statuses to healthy
     /// Equivalent to 0b01 repeated 128 times
     uint256 private constant HEALTHY_DOCTOR_ARRAY_ITEM =
@@ -158,15 +158,15 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
     /// @dev This function is very expensive in gas, that's why it needs to be called several times
     /// @param _amount Amount of _healthyDoctorsSet items to initialize
     function initializeGame(uint256 _amount) external override {
-        uint256 lastHealthyDoctorsSetItemUpdatedCached = _lastHealthyDoctorsSetItemUpdated;
-        uint256 newlastHealthyDoctorsSetItemUpdated = lastHealthyDoctorsSetItemUpdatedCached + _amount;
+        uint256 currentLastDoctorInSet = _lastDoctorAdded;
+        uint256 lastDoctorIdToAdd = currentLastDoctorInSet + _amount;
 
-        if (newlastHealthyDoctorsSetItemUpdated > (_doctorNumber + 15) / 16) {
+        if (lastDoctorIdToAdd > (_doctorNumber + 15) / 16) {
             revert TooManyInitialized();
         }
 
         // Initialize the doctors status set on first call
-        if (lastHealthyDoctorsSetItemUpdatedCached == 0) {
+        if (currentLastDoctorInSet == 0) {
             uint256 arrayLengthToInitialize = (_doctorNumber / 128);
             for (uint256 j = 0; j < arrayLengthToInitialize; ++j) {
                 _doctorsStatusSet[j] = HEALTHY_DOCTOR_ARRAY_ITEM;
@@ -175,14 +175,14 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
             _doctorsStatusSet[arrayLengthToInitialize] = HEALTHY_DOCTOR_ARRAY_ITEM >> (128 - (_doctorNumber % 128)) * 2;
         }
 
-        for (uint256 j = lastHealthyDoctorsSetItemUpdatedCached; j < newlastHealthyDoctorsSetItemUpdated; j++) {
+        for (uint256 j = currentLastDoctorInSet; j < lastDoctorIdToAdd; j++) {
             uint256 doctorIds = HEALTHY_DOCTOR_BASE_RANGE + HEALTHY_DOCTOR_OFFSET * j;
             _healthyDoctorsSet[j] = doctorIds;
         }
 
-        _lastHealthyDoctorsSetItemUpdated = newlastHealthyDoctorsSetItemUpdated;
+        _lastDoctorAdded = lastDoctorIdToAdd;
 
-        if (newlastHealthyDoctorsSetItemUpdated == (_doctorNumber + 15) / 16) {
+        if (lastDoctorIdToAdd == (_doctorNumber + 15) / 16) {
             healthyDoctorsNumber = _doctorNumber;
         }
     }
@@ -216,24 +216,23 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
             revert VRFResponseMissing();
         }
 
-        uint256 offset = _computedInfections[nextEpoch];
+        uint256 infectedDoctorsNextEpoch = infectedDoctorsPerEpoch[nextEpoch];
+        uint256 computedInfectionsForNextEpoch = _computedInfections[nextEpoch];
 
         // Only infect the necessary amount of doctors
-        if (offset + _amount > infectedDoctorsPerEpoch[nextEpoch]) {
-            _amount = infectedDoctorsPerEpoch[nextEpoch] - offset;
+        if (computedInfectionsForNextEpoch + _amount > infectedDoctorsNextEpoch) {
+            _amount = infectedDoctorsNextEpoch - computedInfectionsForNextEpoch;
         }
 
         if (_amount == 0) {
             revert NothingToCompute();
         }
 
-        uint256 computedInfectionsCached = _computedInfections[nextEpoch];
-
         // Infect from offset to offset + _amount
-        _infectRandomDoctors(healthyDoctorsNumberCached, offset, _amount, randomNumber);
+        _infectRandomDoctors(healthyDoctorsNumberCached, computedInfectionsForNextEpoch, _amount, randomNumber);
         healthyDoctorsNumber = healthyDoctorsNumberCached - _amount;
 
-        _computedInfections[nextEpoch] = computedInfectionsCached + _amount;
+        _computedInfections[nextEpoch] = computedInfectionsForNextEpoch + _amount;
     }
 
     /// @notice Starts a new epoch if the conditions are met
@@ -476,16 +475,19 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
     /// @dev Adds back a doctor in the set of healthy doctors
     /// @param _doctorId ID of the doctor to add
     function _addDoctorToHealthySet(uint256 _doctorId) private {
+        uint256 healthyDoctorsNumberCached = healthyDoctorsNumber;
+
         // Loads the array item containing the doctor Id
-        uint256 lastDoctorSetItem = _healthyDoctorsSet[healthyDoctorsNumber / 16];
+        uint256 lastDoctorSetItem = _healthyDoctorsSet[healthyDoctorsNumberCached / 16];
         // Mask the previous value located at the first unused index
-        uint256 offset = (healthyDoctorsNumber % 16) * 16;
+        uint256 offset = (healthyDoctorsNumberCached % 16) * 16;
         lastDoctorSetItem &= ~(DOCTOR_ID_MASK << offset);
         // Add the new doctor Id
         lastDoctorSetItem |= (_doctorId << offset);
         //Update storage
-        _healthyDoctorsSet[healthyDoctorsNumber / 16] = lastDoctorSetItem;
-        ++healthyDoctorsNumber;
+        _healthyDoctorsSet[healthyDoctorsNumberCached / 16] = lastDoctorSetItem;
+
+        healthyDoctorsNumber = healthyDoctorsNumberCached + 1;
     }
 
     /// @dev Gets the doctor Id from the set of healthy doctors cached in memory
