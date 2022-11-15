@@ -262,8 +262,6 @@ contract PlagueGameTest is Test {
 
                     uint256 doctorId = ((setSlot >> offset) & 0xFFFF);
 
-                    console.log(doctorId);
-
                     assertEq(
                         uint256(plagueGame.doctorStatus(doctorId)),
                         uint256(IPlagueGame.Status.Healthy),
