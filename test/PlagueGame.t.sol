@@ -121,7 +121,19 @@ contract PlagueGameTest is Test {
         doctors.mint(collectionSize);
 
         _gameSetup();
-        _initializeGame();
+
+        plagueGame.initializeGame(200);
+        plagueGame.initializeGame(112);
+
+        vm.expectRevert(GameNotStarted.selector);
+        plagueGame.startGame();
+
+        plagueGame.initializeGame(1);
+
+        vm.expectRevert(TooManyInitialized.selector);
+        plagueGame.initializeGame(1);
+
+        plagueGame.startGame();
 
         doctors.mint(10);
         uint256 extraMintedDoctorId = collectionSize;

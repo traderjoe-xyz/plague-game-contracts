@@ -60,6 +60,8 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
     uint256 private constant HEALTHY_DOCTOR_SET_SIZE = 625;
     uint256[HEALTHY_DOCTOR_SET_SIZE] private _healthyDoctorsSet;
     uint256 private constant DOCTOR_ID_MASK = 0xFFFF;
+    uint256 private constant HEALTHY_DOCTOR_BASE_RANGE = 0xf000e000d000c000b000a0009000800070006000500040003000200010000;
+    uint256 private constant HEALTHY_DOCTOR_OFFSET = 0x10001000100010001000100010001000100010001000100010001000100010;
     /// @dev Array containing the status of every doctor
     /// A doctor status is stored in a 2 bits integer.
     // 256 / 2 = 128 doctors per slot
@@ -159,7 +161,7 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
         uint256 lastHealthyDoctorsSetItemUpdatedCached = _lastHealthyDoctorsSetItemUpdated;
         uint256 newlastHealthyDoctorsSetItemUpdated = lastHealthyDoctorsSetItemUpdatedCached + _amount;
 
-        if (newlastHealthyDoctorsSetItemUpdated > HEALTHY_DOCTOR_SET_SIZE) {
+        if (newlastHealthyDoctorsSetItemUpdated > (_doctorNumber + 15) / 16) {
             revert TooManyInitialized();
         }
 
@@ -174,17 +176,13 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
         }
 
         for (uint256 j = lastHealthyDoctorsSetItemUpdatedCached; j < newlastHealthyDoctorsSetItemUpdated; j++) {
-            uint256 doctorId;
-            for (uint256 k = 0; k < 16; ++k) {
-                doctorId += (k + 16 * j) << (k * 16);
-            }
-
-            _healthyDoctorsSet[j] = doctorId;
+            uint256 doctorIds = HEALTHY_DOCTOR_BASE_RANGE + HEALTHY_DOCTOR_OFFSET * j;
+            _healthyDoctorsSet[j] = doctorIds;
         }
 
         _lastHealthyDoctorsSetItemUpdated = newlastHealthyDoctorsSetItemUpdated;
 
-        if (newlastHealthyDoctorsSetItemUpdated == HEALTHY_DOCTOR_SET_SIZE) {
+        if (newlastHealthyDoctorsSetItemUpdated == (_doctorNumber + 15) / 16) {
             healthyDoctorsNumber = _doctorNumber;
         }
     }
