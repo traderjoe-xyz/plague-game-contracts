@@ -91,6 +91,12 @@ contract PlagueGameTest is Test {
     function testConfigFunctions() public {
         _gameSetup();
 
+        vm.expectRevert(InvalidStartTime.selector);
+        plagueGame.updateGameStartTime(block.timestamp - 1);
+
+        plagueGame.updateGameStartTime(block.timestamp + 120);
+        assertEq(plagueGame.startTime(), block.timestamp + 120, "Start time should be updated");
+
         vm.expectRevert(GameNotStarted.selector);
         plagueGame.startGame();
 
@@ -146,6 +152,8 @@ contract PlagueGameTest is Test {
             uint256(IPlagueGame.Status.Dead),
             "Extra doctors minted after game start should be considered dead"
         );
+
+        skip(300);
 
         testFullGame(0);
 
@@ -254,7 +262,7 @@ contract PlagueGameTest is Test {
                 // All remaining doctors should in the healthy doctors set
                 uint256 numberOfWinners = plagueGame.healthyDoctorsNumber();
 
-                uint256 firstStorageSlotForSet = 14;
+                uint256 firstStorageSlotForSet = 15;
                 uint256 setSlot = uint256(vm.load(address(plagueGame), bytes32(firstStorageSlotForSet)));
 
                 for (uint256 j = 0; j < numberOfWinners; j++) {
@@ -452,14 +460,20 @@ contract PlagueGameTest is Test {
 
         vm.expectRevert(TooManyInitialized.selector);
         plagueGame.initializeGame(1);
+
+        vm.expectRevert(GameNotStarted.selector);
+        plagueGame.startGame();
+
+        skip(300);
     }
 
     function _gameSetup() private {
         plagueGame = new PlagueGame(
             doctors,
             potions,
-            infectionPercentagePerEpoch,
+            block.timestamp + 120,
             playerNumberToEndGame,
+            infectionPercentagePerEpoch,
             epochDuration,
             coordinator,
             subscriptionId,

@@ -12,11 +12,14 @@ contract CreateNFTScript is Script {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
 
         vm.startBroadcast(deployerPrivateKey);
-        ERC721Mock villagers = new ERC721Mock();
+        ERC721Mock doctors = new ERC721Mock();
         ERC721Mock potions = new ERC721Mock();
 
-        villagers.mint(mintNumber);
+        doctors.mint(mintNumber);
         potions.mint(mintNumber);
         vm.stopBroadcast();
+
+        console.log("Doctors address: ", address(doctors));
+        console.log("Potions address: ", address(potions));
     }
 }

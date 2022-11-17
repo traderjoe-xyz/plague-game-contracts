@@ -3,6 +3,7 @@ pragma solidity ^0.8.13;
 
 import "openzeppelin/token/ERC721//extensions/IERC721Enumerable.sol";
 
+error InvalidStartTime();
 error InvalidPlayerNumberToEndGame();
 error InvalidInfectionPercentage();
 error InvalidEpochDuration();
@@ -35,8 +36,9 @@ interface IPlagueGame {
     }
 
     /// Game events
+    event GameStartTimeUpdated(uint256 newStartTime);
     event GameStarted();
-    event RandomWordsFulfilled(uint256 epoch, uint256 requestId);
+    event RandomWordsFulfilled(uint256 indexed epoch, uint256 requestId);
     event DoctorsInfectedThisEpoch(uint256 indexed epoch, uint256 infectedDoctors);
     event EpochEnded(uint256 indexed epoch);
     event GameOver();
@@ -51,6 +53,7 @@ interface IPlagueGame {
     function doctors() external view returns (IERC721Enumerable);
     function potions() external view returns (IERC721Enumerable);
 
+    function startTime() external view returns (uint256);
     function playerNumberToEndGame() external view returns (uint256);
     function infectionPercentagePerEpoch(uint256 epoch) external view returns (uint256);
     function totalDefinedEpochNumber() external view returns (uint256);
@@ -72,6 +75,7 @@ interface IPlagueGame {
     function prizeWithdrawalAllowed() external view returns (bool);
 
     function initializeGame(uint256 _amount) external;
+    function updateGameStartTime(uint256 _newStartTime) external;
     function allowPrizeWithdraw(bool _status) external;
     function computeInfectedDoctors(uint256 _amount) external;
     function startGame() external;
