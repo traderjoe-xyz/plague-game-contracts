@@ -322,8 +322,8 @@ contract ApothecaryTest is Test {
         assertEq(apothecary.getDifficulty(), newDifficulty);
     }
 
-    function testCannotSetDifficultyGt100() public {
-        uint256 newDifficulty = 101;
+    function testCannotSetDifficultyGt100_000() public {
+        uint256 newDifficulty = 100_001;
 
         vm.expectRevert(InvalidDifficulty.selector);
         vm.prank(ADMIN);
