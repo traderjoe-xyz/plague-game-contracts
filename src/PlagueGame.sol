@@ -12,6 +12,8 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
     IERC721Enumerable public immutable override doctors;
     /// @notice Address of the potion collection contract
     IERC721Enumerable public immutable override potions;
+    /// @notice Start time of the game, timestamp in seconds
+    uint256 public override startTime;
     /// @notice Number of doctors still alive triggering the end of the game
     uint256 public immutable override playerNumberToEndGame;
     /// @notice Percentage of doctors that will be infected each epoch
@@ -112,8 +114,9 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
     constructor(
         IERC721Enumerable _doctors,
         IERC721Enumerable _potions,
-        uint256[] memory _infectionPercentagePerEpoch,
+        uint256 _startTime,
         uint256 _playerNumberToEndGame,
+        uint256[] memory _infectionPercentagePerEpoch,
         uint256 _epochDuration,
         VRFCoordinatorV2Interface vrfCoordinator_,
         uint64 subscriptionId_,
@@ -126,6 +129,10 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
 
         if (_epochDuration == 0 || _epochDuration > 7 days) {
             revert InvalidEpochDuration();
+        }
+
+        if (_startTime < block.timestamp) {
+            revert InvalidStartTime();
         }
 
         for (uint256 i = 0; i < _infectionPercentagePerEpoch.length; i++) {
@@ -142,8 +149,9 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
             revert InvalidCollection();
         }
 
-        playerNumberToEndGame = _playerNumberToEndGame;
         potions = _potions;
+        startTime = _startTime;
+        playerNumberToEndGame = _playerNumberToEndGame;
         infectionPercentagePerEpoch = _infectionPercentagePerEpoch;
         totalDefinedEpochNumber = _infectionPercentagePerEpoch.length;
         epochDuration = _epochDuration;
@@ -188,12 +196,12 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
     }
 
     /// @notice Starts the game
-    function startGame() external override onlyOwner {
+    function startGame() external override {
         if (isGameStarted) {
             revert GameAlreadyStarted();
         }
 
-        if (healthyDoctorsNumber < _doctorNumber) {
+        if (healthyDoctorsNumber < _doctorNumber || block.timestamp < startTime) {
             revert GameNotStarted();
         }
 
@@ -303,6 +311,17 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
         _burnPotion(_potionId);
 
         emit DoctorCured(_doctorId, _potionId, currentEpochCached);
+    }
+
+    /// @notice Updates the game start time
+    /// @param _newStartTime New game start time
+    function updateGameStartTime(uint256 _newStartTime) external override onlyOwner {
+        if (_newStartTime < block.timestamp) {
+            revert InvalidStartTime();
+        }
+
+        startTime = _newStartTime;
+        emit GameStartTimeUpdated(_newStartTime);
     }
 
     /// @notice Starts and pauses the prize withdrawal
