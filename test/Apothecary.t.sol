@@ -2,7 +2,6 @@
 pragma solidity ^0.8.13;
 
 import "src/IPlagueGame.sol";
-// import "./mocks/IERC721.sol";
 
 import "forge-std/Test.sol";
 import "src/Apothecary.sol";
@@ -28,8 +27,8 @@ contract ApothecaryTest is Test {
     uint8 public difficulty = 100;
 
     // PlagueGame init config
-    uint256 public constant PLAGUE_DOCTORS_COUNT = 10;
-    uint256 epochDuration = 1 days;
+    uint256 public constant PLAGUE_DOCTORS_COUNT = 100;
+    uint256 epochDuration = 6 hours;
     uint256 playerNumberToEndGame = 10;
     uint256[] infectionPercentagePerEpoch =
         [2_000, 2_000, 2_000, 3_000, 3_000, 3_000, 4_000, 4_000, 4_000, 5_000, 5_000, 5_000];
@@ -150,9 +149,8 @@ contract ApothecaryTest is Test {
         bool[] memory doctorBBrewResults = new bool[](MAX_EPOCH_ATTEMPTS);
         uint256 doctorBBrewsCount;
 
-        uint256 i;
         bytes32 hash;
-        while (i < MAX_EPOCH_ATTEMPTS) {
+        for (uint256 i = 0; i < MAX_EPOCH_ATTEMPTS;) {
             if (plagueGame.doctorStatus(doctorA) != IPlagueGame.Status.Dead) {
                 vm.prank(PLAYER_1);
                 apothecary.makePotion(doctorA);
@@ -244,8 +242,15 @@ contract ApothecaryTest is Test {
     }
 
     function testGetVRFForEpoch() public {
-        // yet to figure out how to test.
-		// bruteforce ??
+        uint256[] memory fakeRandomWords = new uint256[](1);
+        fakeRandomWords[0] = 1;
+
+        uint256 doctorId = doctors.tokenOfOwnerByIndex(PLAYER_1, 0);
+        vm.prank(PLAYER_1);
+        apothecary.makePotion(doctorId);
+        vrfCoordinator.fulfillRandomWordsWithOverride(s_nextRequestId++, address(apothecary), fakeRandomWords);
+
+        assertEq(apothecary.getVRFForEpoch(apothecary.getLatestEpochTimestamp()), fakeRandomWords[0]);
     }
 
     function testGetDifficulty() public {
