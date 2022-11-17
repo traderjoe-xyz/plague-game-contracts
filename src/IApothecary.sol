@@ -4,7 +4,7 @@ pragma solidity ^0.8.13;
 import "./IPlagueGame.sol";
 
 error DoctorIsDead();
-error DoctorHasBrewed(uint112 epochTimestamp);
+error DoctorHasBrewed(uint256 epochTimestamp);
 error PotionsNotEnough(uint256 potionsLeft);
 error InvalidDifficulty();
 
@@ -16,7 +16,7 @@ interface IApothecary {
     event PotionsRemoved(uint256[] potions);
 
     struct BrewLog {
-        uint112 timestamp;
+        uint256 timestamp;
         uint256 doctorId;
         bool brewPotion;
     }
@@ -39,15 +39,15 @@ interface IApothecary {
 
     function getPotionsLeft() external view returns (uint256 potionsLeft);
 
-    function getVRFForEpoch(uint112 _epochTimestamp) external view returns (uint256 epochVRF);
+    function getVRFForEpoch(uint256 _epochTimestamp) external view returns (uint256 epochVRF);
 
-    function getDifficulty() external view returns (uint8 winDifficulty);
+    function getDifficulty() external view returns (uint256 winDifficulty);
 
-    function getLatestEpochTimestamp() external view returns (uint112 latestEpoch);
+    function getLatestEpochTimestamp() external view returns (uint256 latestEpoch);
 
-    function getTriedInEpoch(uint112 _epochTimestamp, uint256 _doctorId) external view returns (bool tried);
+    function getTriedInEpoch(uint256 _epochTimestamp, uint256 _doctorId) external view returns (bool tried);
 
-    function setDifficulty(uint8 _difficulty) external;
+    function setDifficulty(uint256 _difficulty) external;
 
     function addPotions(uint256[] memory _potionIds) external;
 

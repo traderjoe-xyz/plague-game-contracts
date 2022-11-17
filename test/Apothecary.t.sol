@@ -24,7 +24,7 @@ contract ApothecaryTest is Test {
     address public constant PLAYER_2 = address(0xc);
 
     // Apothecary config
-    uint8 public difficulty = 100;
+    uint256 public difficulty = 100;
 
     // PlagueGame init config
     uint256 public constant PLAGUE_DOCTORS_COUNT = 100;
@@ -256,7 +256,7 @@ contract ApothecaryTest is Test {
     function testGetDifficulty() public {
         assertEq(apothecary.getDifficulty(), difficulty);
 
-        uint8 newDifficulty = 50;
+        uint256 newDifficulty = 50;
         vm.prank(ADMIN);
         apothecary.setDifficulty(newDifficulty);
 
@@ -272,7 +272,7 @@ contract ApothecaryTest is Test {
         apothecary.makePotion(doctorId);
         _mockVRFResponse(address(apothecary));
 
-        uint112 timestampForFirstBrew = uint112(block.timestamp);
+        uint256 timestampForFirstBrew = block.timestamp;
         assertEq(uint256(apothecary.getLatestEpochTimestamp()), timestampForFirstBrew);
 
         // attempt brew again in next epoch to track latestEpochTimestamp
@@ -314,7 +314,7 @@ contract ApothecaryTest is Test {
     }
 
     function testSetDifficulty() public {
-        uint8 newDifficulty = 10;
+        uint256 newDifficulty = 10;
 
         vm.prank(ADMIN);
         apothecary.setDifficulty(newDifficulty);
@@ -323,7 +323,7 @@ contract ApothecaryTest is Test {
     }
 
     function testCannotSetDifficultyGt100() public {
-        uint8 newDifficulty = 101;
+        uint256 newDifficulty = 101;
 
         vm.expectRevert(InvalidDifficulty.selector);
         vm.prank(ADMIN);
@@ -331,7 +331,7 @@ contract ApothecaryTest is Test {
     }
 
     function testCannotSetDifficultyLt1() public {
-        uint8 newDifficulty = 0;
+        uint256 newDifficulty = 0;
 
         vm.expectRevert(InvalidDifficulty.selector);
         vm.prank(ADMIN);
@@ -339,7 +339,7 @@ contract ApothecaryTest is Test {
     }
 
     function testFailSetDifficultyIfNotOwner() public {
-        uint8 newDifficulty = 10;
+        uint256 newDifficulty = 10;
 
         apothecary.setDifficulty(newDifficulty);
     }
@@ -383,6 +383,49 @@ contract ApothecaryTest is Test {
 
         assertEq(potions.ownerOf(potionA), ADMIN);
         assertEq(potions.ownerOf(potionB), ADMIN);
+    }
+
+    function testMakePotion() public {
+        uint256 doctorId = doctors.tokenOfOwnerByIndex(PLAYER_1, 0);
+
+        vm.prank(PLAYER_1);
+        apothecary.makePotion(doctorId);
+        _mockVRFResponse(address(apothecary));
+
+        assertEq(apothecary.getTriedInEpoch(apothecary.getLatestEpochTimestamp(), doctorId), true);
+    }
+
+    function testCannotMakePotionIfDoctorIsDead() public {
+        uint256 doctorId = doctors.tokenOfOwnerByIndex(PLAYER_1, 0);
+
+        while (plagueGame.doctorStatus(doctorId) != IPlagueGame.Status.Dead) {
+            vm.warp(block.timestamp + apothecary.EPOCH_DURATION() + 1);
+            plagueGame.endEpoch();
+            _mockVRFResponse(address(plagueGame));
+
+            plagueGame.startEpoch();
+        }
+
+        vm.expectRevert(DoctorIsDead.selector);
+        vm.prank(PLAYER_1);
+        apothecary.makePotion(doctorId);
+    }
+
+    function testCannotMakePotionIfDoctorHasBrewedInLatestEpoch() public {
+        uint256 doctorId = doctors.tokenOfOwnerByIndex(PLAYER_1, 0);
+
+        vm.prank(PLAYER_1);
+        apothecary.makePotion(doctorId);
+        _mockVRFResponse(address(apothecary));
+
+        // attempt to brew potion again in same epoch
+        vm.expectRevert(abi.encodeWithSelector(DoctorHasBrewed.selector, apothecary.getLatestEpochTimestamp()));
+        vm.prank(PLAYER_1);
+        apothecary.makePotion(doctorId);
+    }
+
+    function testCannotMakePotionInBetweenVRFResponse() public {
+        //
     }
 
     /**

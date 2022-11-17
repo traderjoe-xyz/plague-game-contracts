@@ -13,12 +13,12 @@ import "./IPlagueGame.sol";
 /// @notice Contract for alive plague doctors to attempt to brew a potion at each epoch
 contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 {
     /// @notice Probability for a doctor to receive a potion when he tries to brew one.
-    /// @notice From 1 (1%) to 100 (100%)
-    uint8 private difficulty;
+    /// @notice difficulty increases from 1 (100% probability) to 100 (1% probability)
+    uint256 private difficulty;
     /// @notice Timestamp of the start of the latest (current) epoch
-    uint112 private latestEpochTimestamp;
+    uint256 private latestEpochTimestamp;
     /// @notice Duration of each epoch
-    uint112 public constant EPOCH_DURATION = 6 hours;
+    uint256 public constant EPOCH_DURATION = 6 hours;
     /// @notice Token ID of the plague doctor that called the VRF for the current epoch
     /// @dev Cache the ID of the plague doctor that called the VRF.
     /// @dev It avoids calling the VRF multiple times
@@ -35,9 +35,9 @@ contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 
     BrewLog[] public brewLogs;
     /// @notice Keep track if plague doctor has tried to brew in an epoch
     /// @dev Mapping from an epoch timestamp to plague doctor ID to tried state
-    mapping(uint112 => mapping(uint256 => bool)) private triedBrewInEpoch;
+    mapping(uint256 => mapping(uint256 => bool)) private triedBrewInEpoch;
     /// @notice VRF numbers generated for epochs
-    mapping(uint112 => uint256) private epochVRFNumber;
+    mapping(uint256 => uint256) private epochVRFNumber;
 
     /// @dev Address of VRF coordinator
     VRFCoordinatorV2Interface private immutable vrfCoordinator;
@@ -68,7 +68,7 @@ contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 
     /// @notice Verify that plague doctor has not attempted to brew potion in latest epoch
     /// @param _doctorId Token ID of plague doctor
     modifier hasNotBrewedInLatestEpoch(uint256 _doctorId) {
-        if (triedBrewInEpoch[_getEpochStart(uint112(block.timestamp))][_doctorId]) {
+        if (triedBrewInEpoch[_getEpochStart(uint256(block.timestamp))][_doctorId]) {
             revert DoctorHasBrewed(latestEpochTimestamp);
         }
         _;
@@ -82,7 +82,7 @@ contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 
         IPlagueGame _plagueGame,
         IERC721Enumerable _potions,
         IERC721Enumerable _doctors,
-        uint8 _difficulty,
+        uint256 _difficulty,
         VRFCoordinatorV2Interface _vrfCoordinator,
         uint64 _subscriptionId,
         bytes32 _keyHash,
@@ -171,7 +171,7 @@ contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 
         if (latestEpochTimestamp == 0 || block.timestamp - latestEpochTimestamp > EPOCH_DURATION) {
             countdown = 0;
         } else {
-            countdown = EPOCH_DURATION + latestEpochTimestamp - uint112(block.timestamp);
+            countdown = EPOCH_DURATION + latestEpochTimestamp - uint256(block.timestamp);
         }
     }
 
@@ -184,20 +184,20 @@ contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 
     /// @notice Returns random number from VRF for an epoch
     /// @param _epochTimestamp Timestamp of epoch
     /// @return epochVRF Random number from VRF used for epoch results
-    function getVRFForEpoch(uint112 _epochTimestamp) external view override returns (uint256 epochVRF) {
+    function getVRFForEpoch(uint256 _epochTimestamp) external view override returns (uint256 epochVRF) {
         epochVRF = epochVRFNumber[_getEpochStart(_epochTimestamp)];
     }
 
     /// @notice Returns current difficulty of brewing a free potion
     /// @dev Probability is calculated as inverse of difficulty. (1 / difficulty)
     /// @return winDifficulty Difficulty of brewing a free potion
-    function getDifficulty() external view override returns (uint8 winDifficulty) {
+    function getDifficulty() external view override returns (uint256 winDifficulty) {
         winDifficulty = difficulty;
     }
 
     /// @notice Returns start timestamp of latest epoch
     /// @return latestEpoch Start timestamp of latest epoch
-    function getLatestEpochTimestamp() external view override returns (uint112 latestEpoch) {
+    function getLatestEpochTimestamp() external view override returns (uint256 latestEpoch) {
         latestEpoch = latestEpochTimestamp;
     }
 
@@ -206,7 +206,7 @@ contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 
     /// @param _epochTimestamp Timestamp of epoch
     /// @param _doctorId Token ID of plague doctor
     /// @return tried Boolean showing plague doctor brew attempt in epoch
-    function getTriedInEpoch(uint112 _epochTimestamp, uint256 _doctorId) external view override returns (bool tried) {
+    function getTriedInEpoch(uint256 _epochTimestamp, uint256 _doctorId) external view override returns (bool tried) {
         tried = triedBrewInEpoch[_getEpochStart(_epochTimestamp)][_doctorId];
     }
 
@@ -224,7 +224,7 @@ contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 
         doctorIsAlive(_doctorId)
         hasNotBrewedInLatestEpoch(_doctorId)
     {
-        if (_getEpochStart(uint112(block.timestamp)) > latestEpochTimestamp) {
+        if (_getEpochStart(uint256(block.timestamp)) > latestEpochTimestamp) {
             plagueDoctorVRFCaller = _doctorId;
             vrfCoordinator.requestRandomWords(
                 keyHash, subscriptionId, VRF_BLOCK_CONFIRMATIONS, maxGas, RANDOM_NUMBERS_COUNT
@@ -254,7 +254,7 @@ contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 
     /// @notice Sets the difficulty of brewing a free potion
     /// @dev Probability is calculated as inverse of difficulty. (1 / difficulty)
     /// @param _difficulty Difficulty of brewing a free potion
-    function setDifficulty(uint8 _difficulty) external override onlyOwner {
+    function setDifficulty(uint256 _difficulty) external override onlyOwner {
         if (_difficulty < 1 || _difficulty > 100) {
             revert InvalidDifficulty();
         }
@@ -297,7 +297,7 @@ contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 
     /// @dev See Chainlink {VRFConsumerBaseV2-fulfillRandomWords}
     /// @param _randomWords Random numbers provided by VRF
     function fulfillRandomWords(uint256, uint256[] memory _randomWords) internal override {
-        latestEpochTimestamp = _getEpochStart(uint112(block.timestamp));
+        latestEpochTimestamp = _getEpochStart(uint256(block.timestamp));
         epochVRFNumber[latestEpochTimestamp] = _randomWords[0];
 
         _brew(plagueDoctorVRFCaller);
@@ -331,24 +331,24 @@ contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 
         }
 
         brewLog.doctorId = _doctorId;
-        brewLog.timestamp = uint112(block.timestamp);
+        brewLog.timestamp = uint256(block.timestamp);
         brewLogs.push(brewLog);
     }
 
     /// @notice Returns period start of epoch timestamp
     /// @param _epochTimestamp Timestamp of epoch
     /// @return epochStart Start timestamp of epoch
-    function _getEpochStart(uint112 _epochTimestamp) private view returns (uint112 epochStart) {
+    function _getEpochStart(uint256 _epochTimestamp) private view returns (uint256 epochStart) {
         if (_epochTimestamp < EPOCH_DURATION) {
             epochStart = _epochTimestamp;
         } else {
             uint256 elapsedEpochs;
             if (_epochTimestamp >= latestEpochTimestamp) {
                 elapsedEpochs = (_epochTimestamp - latestEpochTimestamp) / EPOCH_DURATION;
-                epochStart = latestEpochTimestamp + (uint112(elapsedEpochs) * EPOCH_DURATION);
+                epochStart = latestEpochTimestamp + (uint256(elapsedEpochs) * EPOCH_DURATION);
             } else {
                 elapsedEpochs = (latestEpochTimestamp - _epochTimestamp) / EPOCH_DURATION;
-                epochStart = latestEpochTimestamp - (uint112(elapsedEpochs) * EPOCH_DURATION);
+                epochStart = latestEpochTimestamp - (uint256(elapsedEpochs) * EPOCH_DURATION);
             }
         }
     }
