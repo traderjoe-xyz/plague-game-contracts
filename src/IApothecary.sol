@@ -25,15 +25,15 @@ interface IApothecary {
 
     function potions() external view returns (IERC721Enumerable);
 
-    function getBrewLogs(uint256 _count)
-        external
-        view
-        returns (BrewLog[] memory latestBrewLogs);
+    function doctors() external view returns (IERC721Enumerable);
 
-    function getBrewLogs(uint256 _doctorId, uint256 _count)
-        external
-        view
-        returns (BrewLog[] memory latestBrewLogs);
+    function getTotalBrewsCount() external view returns (uint256 brewsCount);
+
+    function getTotalBrewsCount(uint256 _doctorId) external view returns (uint256 doctorBrewsCount);
+
+    function getBrewLogs(uint256 _count) external view returns (BrewLog[] memory latestBrewLogs);
+
+    function getBrewLogs(uint256 _doctorId, uint256 _count) external view returns (BrewLog[] memory latestBrewLogs);
 
     function getTimeToNextEpoch() external view returns (uint256 countdown);
 
@@ -47,11 +47,13 @@ interface IApothecary {
 
     function getTriedInEpoch(uint112 _epochTimestamp, uint256 _doctorId) external view returns (bool tried);
 
+    function setDifficulty(uint8 _difficulty) external;
+
     function addPotions(uint256[] memory _potionIds) external;
 
     function removePotions(uint256[] memory _potionIds) external;
 
-    function makePotion(uint256 _doctorId) external;
-
     function destroy(address payable _recipient) external;
+
+    function makePotion(uint256 _doctorId) external;
 }
