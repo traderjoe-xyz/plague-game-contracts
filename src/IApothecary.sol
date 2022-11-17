@@ -4,7 +4,7 @@ pragma solidity ^0.8.13;
 import "./IPlagueGame.sol";
 
 error DoctorIsDead();
-error DoctorHasBrewed(uint112 epoch);
+error DoctorHasBrewed(uint112 epochTimestamp);
 error PotionsNotEnough(uint256 potionsLeft);
 error InvalidDifficulty();
 
@@ -52,8 +52,6 @@ interface IApothecary {
     function addPotions(uint256[] memory _potionIds) external;
 
     function removePotions(uint256[] memory _potionIds) external;
-
-    function destroy(address payable _recipient) external;
 
     function makePotion(uint256 _doctorId) external;
 }

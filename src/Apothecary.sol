@@ -289,27 +289,6 @@ contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 
         emit PotionsRemoved(_potionIds);
     }
 
-    /// @notice Terminate Apothecary contract. i.e remove it's bytecode from the blockchain
-    /// @dev Can only be executed when plague game is over
-    /// @param _recipient Address to receive native balance and potion tokens left
-    function destroy(address payable _recipient) external override onlyOwner {
-        if (!plagueGame.isGameOver()) {
-            revert GameNotOver();
-        }
-
-        if (_getPotionsLeft() > 0) {
-            uint256[] memory _potionIds = _getPotionIds(_getPotionsLeft());
-            for (uint256 i = 0; i < _potionIds.length;) {
-                potions.safeTransferFrom(address(this), _recipient, _potionIds[i]);
-
-                unchecked {
-                    ++i;
-                }
-            }
-        }
-        selfdestruct(_recipient);
-    }
-
     /**
      * Private and Internal Functions *
      */
@@ -318,7 +297,6 @@ contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 
     /// @dev See Chainlink {VRFConsumerBaseV2-fulfillRandomWords}
     /// @param _randomWords Random numbers provided by VRF
     function fulfillRandomWords(uint256, uint256[] memory _randomWords) internal override {
-        // uint256 elapsedEpochs = (block.timestamp - latestEpochTimestamp)
         latestEpochTimestamp = _getEpochStart(uint112(block.timestamp));
         epochVRFNumber[latestEpochTimestamp] = _randomWords[0];
 
