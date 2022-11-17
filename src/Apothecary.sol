@@ -13,7 +13,7 @@ import "./IPlagueGame.sol";
 /// @notice Contract for alive plague doctors to attempt to brew a potion at each epoch
 contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 {
     /// @notice Probability for a doctor to receive a potion when he tries to brew one.
-    /// @notice difficulty increases from 1 (100% probability) to 100 (1% probability)
+    /// @notice difficulty increases from 1 (100% probability) to 100,000 (0.001% probability)
     uint256 private difficulty;
     /// @notice Timestamp of the start of the latest (current) epoch
     uint256 private latestEpochTimestamp;
@@ -88,7 +88,7 @@ contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 
         bytes32 _keyHash,
         uint32 _maxGas
     ) VRFConsumerBaseV2(address(_vrfCoordinator)) {
-        if (_difficulty < 1 || _difficulty > 100) {
+        if (_difficulty < 1 || _difficulty > 100_000) {
             revert InvalidDifficulty();
         }
 
@@ -255,7 +255,7 @@ contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 
     /// @dev Probability is calculated as inverse of difficulty. (1 / difficulty)
     /// @param _difficulty Difficulty of brewing a free potion
     function setDifficulty(uint256 _difficulty) external override onlyOwner {
-        if (_difficulty < 1 || _difficulty > 100) {
+        if (_difficulty < 1 || _difficulty > 100_000) {
             revert InvalidDifficulty();
         }
         difficulty = _difficulty;
