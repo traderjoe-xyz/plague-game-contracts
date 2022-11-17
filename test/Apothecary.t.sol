@@ -313,6 +313,78 @@ contract ApothecaryTest is Test {
         assertEq(apothecary.getTriedInEpoch(apothecary.getLatestEpochTimestamp(), doctorB), true);
     }
 
+    function testSetDifficulty() public {
+        uint8 newDifficulty = 10;
+
+        vm.prank(ADMIN);
+        apothecary.setDifficulty(newDifficulty);
+
+        assertEq(apothecary.getDifficulty(), newDifficulty);
+    }
+
+    function testCannotSetDifficultyGt100() public {
+        uint8 newDifficulty = 101;
+
+        vm.expectRevert(InvalidDifficulty.selector);
+        vm.prank(ADMIN);
+        apothecary.setDifficulty(newDifficulty);
+    }
+
+    function testCannotSetDifficultyLt1() public {
+        uint8 newDifficulty = 0;
+
+        vm.expectRevert(InvalidDifficulty.selector);
+        vm.prank(ADMIN);
+        apothecary.setDifficulty(newDifficulty);
+    }
+
+    function testFailSetDifficultyIfNotOwner() public {
+        uint8 newDifficulty = 10;
+
+        apothecary.setDifficulty(newDifficulty);
+    }
+
+    function testAddPotions() public {
+        vm.startPrank(ADMIN);
+        potions.mint(1);
+        uint256 potionId = potions.tokenOfOwnerByIndex(ADMIN, 0);
+
+        potions.approve(address(apothecary), potionId);
+
+        uint256 apothecaryInitialBalance = potions.balanceOf(address(apothecary));
+        uint256 adminInitialBalance = potions.balanceOf(ADMIN);
+
+        uint256[] memory potionIds = new uint256[](1);
+        potionIds[0] = potionId;
+        apothecary.addPotions(potionIds);
+        vm.stopPrank();
+
+        assertEq(potions.balanceOf(ADMIN), --adminInitialBalance);
+        assertEq(potions.balanceOf(address(apothecary)), ++apothecaryInitialBalance);
+        assertEq(potions.ownerOf(potionId), address(apothecary));
+    }
+
+    function testRemovePotions() public {
+        uint256 potionA = potions.tokenOfOwnerByIndex(address(apothecary), 0);
+        uint256 potionB = potions.tokenOfOwnerByIndex(address(apothecary), 1);
+
+        uint256 apothecaryInitialBalance = potions.balanceOf(address(apothecary));
+        uint256 adminInitialBalance = potions.balanceOf(ADMIN);
+
+        uint256[] memory potionIds = new uint256[](2);
+        potionIds[0] = potionA;
+        potionIds[1] = potionB;
+
+        vm.prank(ADMIN);
+        apothecary.removePotions(potionIds);
+
+        assertEq(potions.balanceOf(ADMIN), adminInitialBalance + potionIds.length);
+        assertEq(potions.balanceOf(address(apothecary)), apothecaryInitialBalance - potionIds.length);
+
+        assertEq(potions.ownerOf(potionA), ADMIN);
+        assertEq(potions.ownerOf(potionB), ADMIN);
+    }
+
     /**
      * Helper Functions *
      */
