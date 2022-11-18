@@ -127,7 +127,7 @@ contract ApothecaryTest is Test {
                     ++j;
                 }
             }
-            vm.warp(block.timestamp + apothecary.EPOCH_DURATION() + 1);
+            skip(apothecary.EPOCH_DURATION() + 1);
 
             unchecked {
                 ++i;
@@ -178,7 +178,7 @@ contract ApothecaryTest is Test {
                 }
             }
 
-            vm.warp(block.timestamp + apothecary.EPOCH_DURATION() + 1);
+            skip(apothecary.EPOCH_DURATION() + 1);
             unchecked {
                 ++i;
             }
@@ -216,11 +216,11 @@ contract ApothecaryTest is Test {
         vm.prank(PLAYER_1);
         apothecary.makePotion(doctorId);
         _mockVRFResponse(address(apothecary));
-        vm.warp(block.timestamp + (apothecary.EPOCH_DURATION() / 2));
+        skip(apothecary.EPOCH_DURATION() / 2);
 
         assertEq(uint256(apothecary.getTimeToNextEpoch()), apothecary.EPOCH_DURATION() / 2);
 
-        vm.warp(block.timestamp + apothecary.EPOCH_DURATION() + 1);
+        skip(apothecary.EPOCH_DURATION() + 1);
 
         assertEq(apothecary.getTimeToNextEpoch(), 0);
     }
@@ -276,7 +276,7 @@ contract ApothecaryTest is Test {
         assertEq(uint256(apothecary.getLatestEpochTimestamp()), timestampForFirstBrew);
 
         // attempt brew again in next epoch to track latestEpochTimestamp
-        vm.warp(block.timestamp + apothecary.EPOCH_DURATION() + 1);
+        skip(apothecary.EPOCH_DURATION() + 1);
         vm.prank(PLAYER_1);
         apothecary.makePotion(doctorId);
         _mockVRFResponse(address(apothecary));
@@ -286,7 +286,7 @@ contract ApothecaryTest is Test {
         );
 
         // forward the block.timestamp by 3 epochs
-        vm.warp(block.timestamp + (apothecary.EPOCH_DURATION() * 3));
+        skip((apothecary.EPOCH_DURATION() * 3));
         assertEq(
             uint256(apothecary.getLatestEpochTimestamp()), uint256(timestampForFirstBrew) + apothecary.EPOCH_DURATION()
         );
@@ -303,7 +303,7 @@ contract ApothecaryTest is Test {
         assertEq(apothecary.getTriedInEpoch(apothecary.getLatestEpochTimestamp(), doctorA), true);
         assertEq(apothecary.getTriedInEpoch(apothecary.getLatestEpochTimestamp(), doctorB), false);
 
-        vm.warp(block.timestamp + apothecary.EPOCH_DURATION() + 1);
+        skip(apothecary.EPOCH_DURATION() + 1);
 
         vm.prank(PLAYER_2);
         apothecary.makePotion(doctorB);
@@ -399,7 +399,7 @@ contract ApothecaryTest is Test {
         uint256 doctorId = doctors.tokenOfOwnerByIndex(PLAYER_1, 0);
 
         while (plagueGame.doctorStatus(doctorId) != IPlagueGame.Status.Dead) {
-            vm.warp(block.timestamp + apothecary.EPOCH_DURATION() + 1);
+            skip(apothecary.EPOCH_DURATION() + 1);
             plagueGame.endEpoch();
             _mockVRFResponse(address(plagueGame));
 
