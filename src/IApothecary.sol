@@ -7,6 +7,8 @@ error DoctorIsDead();
 error DoctorHasBrewed(uint256 epochTimestamp);
 error PotionsNotEnough(uint256 potionsLeft);
 error InvalidDifficulty();
+error VrfRequestPending(uint256 requestId);
+error InvalidVrfRequestId();
 
 interface IApothecary {
     event SentPotion(uint256 indexed doctorId, uint256 indexed potionId);
