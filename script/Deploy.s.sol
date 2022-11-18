@@ -15,8 +15,8 @@ contract DeployScript is Script {
         [2_000, 2_000, 2_000, 3_000, 3_000, 3_000, 4_000, 4_000, 4_000, 5_000, 5_000, 5_000];
 
     // Fuji
-    ERC721Mock doctors = ERC721Mock(0x24c60BFC0572f855f3F5289fca67fc26a7E7E5f1);
-    ERC721Mock potions = ERC721Mock(0xeDD3DDA6dc38514809bb0F187dC3166902c293DB);
+    ERC721Mock doctors = ERC721Mock(0x4f34ef87836d2241c4D4f2cBB36574754Cf1aa50);
+    ERC721Mock potions = ERC721Mock(0xBd7637bc6Ba1fce0ff0fE19899eB2225ed6d7D00);
     VRFCoordinatorV2Interface coordinator = VRFCoordinatorV2Interface(0x2eD832Ba664535e5886b75D64C46EB9a228C2610);
     uint64 subscriptionId = 139;
     bytes32 keyHash = 0x354d2f95da55398f44b7cff77da56283d9c6c829a4bdf1bbcaf2ad6a4d081f61;
