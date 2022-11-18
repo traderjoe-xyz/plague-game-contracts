@@ -134,9 +134,9 @@ contract ApothecaryTest is Test {
             }
         }
 
-        // console.log(brewsCount);
-        // console.log(apothecary.getTotalBrewsCount());
-        assertEq(apothecary.getTotalBrewsCount(), brewsCount);
+        assertEq(
+            apothecary.getTotalBrewsCount(), brewsCount, "Total brews count should equal total number of brew attempts"
+        );
     }
 
     function testGetBrewLogs() public {
@@ -184,15 +184,29 @@ contract ApothecaryTest is Test {
             }
         }
 
-        assertEq(apothecary.getBrewLogs(doctorA, MAX_EPOCH_ATTEMPTS).length, doctorABrewsCount);
-        assertEq(apothecary.getBrewLogs(doctorB, MAX_EPOCH_ATTEMPTS).length, doctorBBrewsCount);
-        assertEq(apothecary.getTotalBrewsCount(), doctorABrewsCount + doctorBBrewsCount);
+        assertEq(
+            apothecary.getBrewLogs(doctorA, MAX_EPOCH_ATTEMPTS).length,
+            doctorABrewsCount,
+            "Number of brew logs for a doctorA should equal number of brew attempts across all epochs"
+        );
+        assertEq(
+            apothecary.getBrewLogs(doctorB, MAX_EPOCH_ATTEMPTS).length,
+            doctorBBrewsCount,
+            "Number of brew logs for a doctorB should equal number of brew attempts across all epochs"
+        );
+        assertEq(
+            apothecary.getTotalBrewsCount(),
+            doctorABrewsCount + doctorBBrewsCount,
+            "Total number of brew logs should equal number of brew attemps from doctorA and doctorB accross all epochs"
+        );
 
         IApothecary.BrewLog memory nthBrewResult;
 
         for (uint256 i = 0; i < doctorABrewsCount;) {
             nthBrewResult = apothecary.getBrewLogs(doctorA, MAX_EPOCH_ATTEMPTS)[i];
-            assertEq(nthBrewResult.brewPotion, doctorABrewResults[i]);
+            assertEq(
+                nthBrewResult.brewPotion, doctorABrewResults[i], "Brew logs for doctorA should be stored correctly"
+            );
 
             unchecked {
                 ++i;
@@ -201,7 +215,9 @@ contract ApothecaryTest is Test {
 
         for (uint256 i = 0; i < doctorBBrewsCount;) {
             nthBrewResult = apothecary.getBrewLogs(doctorB, MAX_EPOCH_ATTEMPTS)[i];
-            assertEq(nthBrewResult.brewPotion, doctorBBrewResults[i]);
+            assertEq(
+                nthBrewResult.brewPotion, doctorBBrewResults[i], "Brew logs for doctorB should be stored correctly"
+            );
 
             unchecked {
                 ++i;
@@ -210,7 +226,11 @@ contract ApothecaryTest is Test {
     }
 
     function testGetTimeToNextEpoch() public {
-        assertEq(uint256(apothecary.getTimeToNextEpoch()), 0);
+        assertEq(
+            apothecary.getTimeToNextEpoch(),
+            0,
+            "Time to next epoch should be zero if no brew attempts has occured"
+        );
 
         uint256 doctorId = doctors.tokenOfOwnerByIndex(PLAYER_1, 0);
         vm.prank(PLAYER_1);
@@ -218,16 +238,28 @@ contract ApothecaryTest is Test {
         _mockVRFResponse(address(apothecary));
         skip(apothecary.EPOCH_DURATION() / 2);
 
-        assertEq(uint256(apothecary.getTimeToNextEpoch()), apothecary.EPOCH_DURATION() / 2);
+        assertEq(
+            apothecary.getTimeToNextEpoch(),
+            apothecary.EPOCH_DURATION() / 2,
+            "Time to next epoch should be half an epoch's duration"
+        );
 
         skip(apothecary.EPOCH_DURATION() + 1);
 
-        assertEq(apothecary.getTimeToNextEpoch(), 0);
+        assertEq(
+            apothecary.getTimeToNextEpoch(),
+            0,
+            "Time to next epoch should be zero if an epoch duration has elapsed since lastEpochTimestamp"
+        );
     }
 
     function testGetPotionsLeft() public {
         uint256 initialBalance = potions.balanceOf(address(apothecary));
-        assertEq(initialBalance, apothecary.getPotionsLeft());
+        assertEq(
+            initialBalance,
+            apothecary.getPotionsLeft(),
+            "Apothecary's potions balance should be equal to it's initial balance if no brew attempt has taken place"
+        );
 
         // brew with a difficulty of [1] (guarantees plague doctor will get a potion)
         vm.prank(ADMIN);
@@ -238,7 +270,11 @@ contract ApothecaryTest is Test {
         apothecary.makePotion(doctorId);
         _mockVRFResponse(address(apothecary));
 
-        assertEq(initialBalance - 1, apothecary.getPotionsLeft());
+        assertEq(
+            initialBalance - 1,
+            apothecary.getPotionsLeft(),
+            "Apothecary's potions balance should be less than 1 if a potion is brewed successfully to a plague doctor"
+        );
     }
 
     function testGetVRFForEpoch() public {
@@ -250,21 +286,33 @@ contract ApothecaryTest is Test {
         apothecary.makePotion(doctorId);
         vrfCoordinator.fulfillRandomWordsWithOverride(s_nextRequestId++, address(apothecary), fakeRandomWords);
 
-        assertEq(apothecary.getVRFForEpoch(apothecary.getLatestEpochTimestamp()), fakeRandomWords[0]);
+        assertEq(
+            apothecary.getVRFForEpoch(apothecary.getLatestEpochTimestamp()),
+            fakeRandomWords[0],
+            "VRF for an epoch stored in contract should be equal to VRF generated for that epoch"
+        );
     }
 
     function testGetDifficulty() public {
-        assertEq(apothecary.getDifficulty(), difficulty);
+        assertEq(
+            apothecary.getDifficulty(),
+            difficulty,
+            "Difficulty should be equal to difficulty set at contract deployment"
+        );
 
         uint256 newDifficulty = 50;
         vm.prank(ADMIN);
         apothecary.setDifficulty(newDifficulty);
 
-        assertEq(apothecary.getDifficulty(), newDifficulty);
+        assertEq(apothecary.getDifficulty(), newDifficulty, "Difficulty should be equal to new difficulty set");
     }
 
     function testGetLatestEpochTimestamp() public {
-        assertEq(uint256(apothecary.getLatestEpochTimestamp()), 0);
+        assertEq(
+            apothecary.getLatestEpochTimestamp(),
+            0,
+            "Latest epoch timestamp should be zero before any brew attempts"
+        );
 
         // latestEpochTimestamp is tracked on first brew attempt
         uint256 doctorId = doctors.tokenOfOwnerByIndex(PLAYER_1, 0);
@@ -273,7 +321,11 @@ contract ApothecaryTest is Test {
         _mockVRFResponse(address(apothecary));
 
         uint256 timestampForFirstBrew = block.timestamp;
-        assertEq(uint256(apothecary.getLatestEpochTimestamp()), timestampForFirstBrew);
+        assertEq(
+            apothecary.getLatestEpochTimestamp(),
+            timestampForFirstBrew,
+            "Latest epoch timestamp should be time of first brew"
+        );
 
         // attempt brew again in next epoch to track latestEpochTimestamp
         skip(apothecary.EPOCH_DURATION() + 1);
@@ -282,13 +334,17 @@ contract ApothecaryTest is Test {
         _mockVRFResponse(address(apothecary));
 
         assertEq(
-            uint256(apothecary.getLatestEpochTimestamp()), uint256(timestampForFirstBrew) + apothecary.EPOCH_DURATION()
+            apothecary.getLatestEpochTimestamp(),
+            timestampForFirstBrew + apothecary.EPOCH_DURATION(),
+            "Latest epoch timestamp should be one epoch farther from timestamp of first brew"
         );
 
         // forward the block.timestamp by 3 epochs
         skip((apothecary.EPOCH_DURATION() * 3));
         assertEq(
-            uint256(apothecary.getLatestEpochTimestamp()), uint256(timestampForFirstBrew) + apothecary.EPOCH_DURATION()
+            apothecary.getLatestEpochTimestamp(),
+            timestampForFirstBrew + apothecary.EPOCH_DURATION(),
+            "Latest epoch timestamp should not change if no brew attempt occured in elapsed epochs"
         );
     }
 
@@ -300,8 +356,16 @@ contract ApothecaryTest is Test {
         apothecary.makePotion(doctorA);
         _mockVRFResponse(address(apothecary));
 
-        assertEq(apothecary.getTriedInEpoch(apothecary.getLatestEpochTimestamp(), doctorA), true);
-        assertEq(apothecary.getTriedInEpoch(apothecary.getLatestEpochTimestamp(), doctorB), false);
+        assertEq(
+            apothecary.getTriedInEpoch(apothecary.getLatestEpochTimestamp(), doctorA),
+            true,
+            "It should show that doctorA attempted brew in current epoch"
+        );
+        assertEq(
+            apothecary.getTriedInEpoch(apothecary.getLatestEpochTimestamp(), doctorB),
+            false,
+            "It should show that doctorB did not attempt brew in current epoch"
+        );
 
         skip(apothecary.EPOCH_DURATION() + 1);
 
@@ -309,8 +373,16 @@ contract ApothecaryTest is Test {
         apothecary.makePotion(doctorB);
         _mockVRFResponse(address(apothecary));
 
-        assertEq(apothecary.getTriedInEpoch(apothecary.getLatestEpochTimestamp(), doctorA), false);
-        assertEq(apothecary.getTriedInEpoch(apothecary.getLatestEpochTimestamp(), doctorB), true);
+        assertEq(
+            apothecary.getTriedInEpoch(apothecary.getLatestEpochTimestamp(), doctorA),
+            false,
+            "It should show that doctorA did not attempt brew in current epoch"
+        );
+        assertEq(
+            apothecary.getTriedInEpoch(apothecary.getLatestEpochTimestamp(), doctorB),
+            true,
+            "It should show that doctorB attempted brew in current epoch"
+        );
     }
 
     function testSetDifficulty() public {
@@ -319,7 +391,7 @@ contract ApothecaryTest is Test {
         vm.prank(ADMIN);
         apothecary.setDifficulty(newDifficulty);
 
-        assertEq(apothecary.getDifficulty(), newDifficulty);
+        assertEq(apothecary.getDifficulty(), newDifficulty, "It should set difficulty to new difficulty");
     }
 
     function testCannotSetDifficultyGt100_000() public {
@@ -359,9 +431,17 @@ contract ApothecaryTest is Test {
         apothecary.addPotions(potionIds);
         vm.stopPrank();
 
-        assertEq(potions.balanceOf(ADMIN), --adminInitialBalance);
-        assertEq(potions.balanceOf(address(apothecary)), ++apothecaryInitialBalance);
-        assertEq(potions.ownerOf(potionId), address(apothecary));
+        assertEq(
+            potions.balanceOf(ADMIN),
+            adminInitialBalance - potionIds.length,
+            "Potions balance of ADMIN should reduce by one"
+        );
+        assertEq(
+            potions.balanceOf(address(apothecary)),
+            apothecaryInitialBalance + potionIds.length,
+            "Potions balance of APOTHECARY should increase by one"
+        );
+        assertEq(potions.ownerOf(potionId), address(apothecary), "APOTHECARY should be the owner of the potion ID");
     }
 
     function testRemovePotions() public {
@@ -378,11 +458,19 @@ contract ApothecaryTest is Test {
         vm.prank(ADMIN);
         apothecary.removePotions(potionIds);
 
-        assertEq(potions.balanceOf(ADMIN), adminInitialBalance + potionIds.length);
-        assertEq(potions.balanceOf(address(apothecary)), apothecaryInitialBalance - potionIds.length);
+        assertEq(
+            potions.balanceOf(ADMIN),
+            adminInitialBalance + potionIds.length,
+            "Potions balance of ADMIN should increase by number of potions sent"
+        );
+        assertEq(
+            potions.balanceOf(address(apothecary)),
+            apothecaryInitialBalance - potionIds.length,
+            "Potions balance of APOTHECARY should reduce by number of potions sent"
+        );
 
-        assertEq(potions.ownerOf(potionA), ADMIN);
-        assertEq(potions.ownerOf(potionB), ADMIN);
+        assertEq(potions.ownerOf(potionA), ADMIN, "PotionA should be owned by ADMIN");
+        assertEq(potions.ownerOf(potionB), ADMIN, "PotionB should be owned by ADMIN");
     }
 
     function testMakePotion() public {
@@ -392,7 +480,11 @@ contract ApothecaryTest is Test {
         apothecary.makePotion(doctorId);
         _mockVRFResponse(address(apothecary));
 
-        assertEq(apothecary.getTriedInEpoch(apothecary.getLatestEpochTimestamp(), doctorId), true);
+        assertEq(
+            apothecary.getTriedInEpoch(apothecary.getLatestEpochTimestamp(), doctorId),
+            true,
+            "Should prove that doctor Id has attempted brew in current epoch"
+        );
     }
 
     function testCannotMakePotionIfDoctorIsDead() public {
