@@ -318,11 +318,11 @@ contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 
 
         if (uint256(hash) % difficulty == 0) {
             if (_getPotionsLeft() == 0) {
-                revert PotionsNotEnough(_getPotionsLeft());
+                revert PotionsNotEnough(0);
             }
 
             brewLog.brewPotion = true;
-            uint256 potionId = _getPotionIds(1)[0];
+            uint256 potionId = _getPotionId();
             potions.safeTransferFrom(address(this), doctors.ownerOf(_doctorId), potionId);
 
             emit SentPotion(_doctorId, potionId);
@@ -359,31 +359,22 @@ contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 
         potionsLeft = potions.balanceOf(address(this));
     }
 
-    /// @notice Returns [n] token IDs of potions owned by Apothecary contract
-    /// @dev Reverts if [n] is greater than Apothecary contract balance
-    /// @param _count Number of token IDs to return
-    /// @return potionIds Array of [n] potion IDs owned by contract
-    function _getPotionIds(uint256 _count) private view returns (uint256[] memory) {
-        if (_count > _getPotionsLeft()) {
-            revert PotionsNotEnough(_getPotionsLeft());
+    /// @notice Returns first token ID of potions owned by Apothecary contract
+    /// @dev Reverts if no potions is owned by Apothecary contract
+    /// @return potionId First potion ID owned by Apothecary contract
+    function _getPotionId() private view returns (uint256 potionId) {
+        if (_getPotionsLeft() == 0) {
+            revert PotionsNotEnough(0);
         }
-
-        uint256[] memory potionIds = new uint256[](_count);
-        for (uint256 i = 0; i < _count;) {
-            potionIds[i] = potions.tokenOfOwnerByIndex(address(this), i);
-            unchecked {
-                ++i;
-            }
-        }
-
-        return potionIds;
+        potionId = potions.tokenOfOwnerByIndex(address(this), 0);
     }
 
     /// @notice Returns the total number of brew attempts from a plague doctor
     /// @param _doctorId Token ID of plague doctor
     /// @return doctorBrewsCount Number of brew attempts from plague doctor
     function _getTotalBrewsCount(uint256 _doctorId) private view returns (uint256 doctorBrewsCount) {
-        for (uint256 i = 0; i < brewLogs.length;) {
+        uint256 allBrewLogsCount = brewLogs.length;
+        for (uint256 i = 0; i < allBrewLogsCount;) {
             if (brewLogs[i].doctorId == _doctorId) {
                 doctorBrewsCount += 1;
             }
