@@ -38,6 +38,8 @@ contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 
     mapping(uint256 => mapping(uint256 => bool)) private triedBrewInEpoch;
     /// @notice VRF numbers generated for epochs
     mapping(uint256 => uint256) private epochVRFNumber;
+    /// @notice epoch start timestamp to VRF request id
+    mapping(uint256 => uint256) private epochRequestId;
 
     /// @dev Address of VRF coordinator
     VRFCoordinatorV2Interface private immutable vrfCoordinator;
@@ -225,8 +227,15 @@ contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 
         hasNotBrewedInLatestEpoch(_doctorId)
     {
         if (_getEpochStart(uint256(block.timestamp)) > latestEpochTimestamp) {
+            uint256 nextEpochTimestampCache = _getEpochStart(uint256(block.timestamp));
+            uint256 pendingRequestId = epochRequestId[nextEpochTimestampCache];
+
+            if (pendingRequestId != 0) {
+                revert VrfRequestPending(pendingRequestId);
+            }
+
             plagueDoctorVRFCaller = _doctorId;
-            vrfCoordinator.requestRandomWords(
+            epochRequestId[nextEpochTimestampCache] = vrfCoordinator.requestRandomWords(
                 keyHash, subscriptionId, VRF_BLOCK_CONFIRMATIONS, maxGas, RANDOM_NUMBERS_COUNT
             );
         } else {
@@ -296,8 +305,13 @@ contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 
     /// @notice Callback by VRFConsumerBaseV2 to pass VRF results
     /// @dev See Chainlink {VRFConsumerBaseV2-fulfillRandomWords}
     /// @param _randomWords Random numbers provided by VRF
-    function fulfillRandomWords(uint256, uint256[] memory _randomWords) internal override {
+    function fulfillRandomWords(uint256 _requestId, uint256[] memory _randomWords) internal override {
         latestEpochTimestamp = _getEpochStart(uint256(block.timestamp));
+
+        if (epochRequestId[latestEpochTimestamp] != _requestId) {
+            revert InvalidVrfRequestId();
+        }
+
         epochVRFNumber[latestEpochTimestamp] = _randomWords[0];
 
         _brew(plagueDoctorVRFCaller);

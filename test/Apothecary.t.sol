@@ -517,8 +517,28 @@ contract ApothecaryTest is Test {
     }
 
     function testCannotMakePotionInBetweenVRFResponse() public {
-        //
+        uint256 doctorA = doctors.tokenOfOwnerByIndex(PLAYER_1, 0);
+        uint256 doctorB = doctors.tokenOfOwnerByIndex(PLAYER_2, 0);
+
+        vm.prank(PLAYER_1);
+        apothecary.makePotion(doctorA);
+
+		vm.expectRevert(abi.encodeWithSelector(VrfRequestPending.selector, s_nextRequestId));
+        vm.prank(PLAYER_2);
+        apothecary.makePotion(doctorB);
     }
+
+	// function testCannotMakePotionWithInvalidVRFRequestId() public {
+    //     uint256 doctorId = doctors.tokenOfOwnerByIndex(PLAYER_1, 0);
+	// 	uint256[] memory mockRandomWords = new uint256[](1);
+    //     mockRandomWords[0] = 1;
+
+    //     vm.prank(PLAYER_1);
+    //     apothecary.makePotion(doctorId);
+
+	// 	vm.expectRevert(InvalidVrfRequestId.selector);
+	// 	vrfCoordinator.fulfillRandomWords(s_nextRequestId - 1, address(apothecary));
+	// }
 
     /**
      * Helper Functions *
