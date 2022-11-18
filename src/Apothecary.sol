@@ -80,6 +80,15 @@ contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 
      * Constructor *
      */
 
+    /// @dev constructor
+    /// @param _plagueGame Address of plague game contract
+    /// @param _potions Address of potions collection contract
+    /// @param _doctors Address of doctors collection contract
+    /// @param _difficulty Probability of a doctor to receive a potion on brew
+    /// @param _vrfCoordinator Address of VRF coordinator contract
+    /// @param _subscriptionId VRF subscription ID
+    /// @param _keyHash VRF key hash
+    /// @param _maxGas Max gas used on the VRF callback
     constructor(
         IPlagueGame _plagueGame,
         IERC721Enumerable _potions,
