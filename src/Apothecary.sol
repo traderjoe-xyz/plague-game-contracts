@@ -12,6 +12,8 @@ import "./IPlagueGame.sol";
 /// @title Apothecary
 /// @notice Contract for alive plague doctors to attempt to brew a potion at each epoch
 contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 {
+    /// @notice Timestamp for Apothecary to allow plague doctors brew potions
+    uint256 private startTime;
     /// @notice Probability for a doctor to receive a potion when he tries to brew one.
     /// @notice difficulty increases from 1 (100% probability) to 100,000 (0.001% probability)
     uint256 private difficulty;
@@ -76,6 +78,14 @@ contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 
         _;
     }
 
+    /// @notice Verify that brew start time has reached
+    modifier brewHasStarted() {
+        if (block.timestamp < startTime) {
+            revert BrewNotStarted();
+        }
+        _;
+    }
+
     /**
      * Constructor *
      */
@@ -94,6 +104,7 @@ contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 
         IERC721Enumerable _potions,
         IERC721Enumerable _doctors,
         uint256 _difficulty,
+        uint256 _startTime,
         VRFCoordinatorV2Interface _vrfCoordinator,
         uint64 _subscriptionId,
         bytes32 _keyHash,
@@ -103,10 +114,15 @@ contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 
             revert InvalidDifficulty();
         }
 
+        if (_startTime < block.timestamp) {
+            revert InvalidStartTime();
+        }
+
         plagueGame = _plagueGame;
         potions = _potions;
         doctors = _doctors;
         difficulty = _difficulty;
+        startTime = _startTime;
 
         // VRF setup
         vrfCoordinator = _vrfCoordinator;
@@ -118,6 +134,12 @@ contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 
     /**
      * View Functions *
      */
+
+    /// @notice Returns the start timestamp for brewing potions in Apothecary contract
+    /// @return brewStartTime Start timestamp for brewing potions
+    function getStartTime() external view override returns (uint256 brewStartTime) {
+        brewStartTime = startTime;
+    }
 
     /// @notice Returns the total number of brew attempts from all doctors
     /// @return brewsCount Number of brew attempts from all doctors
@@ -232,6 +254,7 @@ contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 
     function makePotion(uint256 _doctorId)
         external
         override
+        brewHasStarted
         doctorIsAlive(_doctorId)
         hasNotBrewedInLatestEpoch(_doctorId)
     {
@@ -268,6 +291,20 @@ contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 
     /**
      * Owner Functions *
      */
+
+    /// @notice Sets the start timestamp for brewing potions
+    /// @dev Start time can only be set if initial start time has not reached
+    /// @param _startTime Start timestamp for brewing potions
+    function setStartTime(uint256 _startTime) external override onlyOwner {
+        if (block.timestamp >= startTime) {
+            revert BrewHasStarted();
+        }
+        if (_startTime < block.timestamp) {
+            revert InvalidStartTime();
+        }
+
+        startTime = _startTime;
+    }
 
     /// @notice Sets the difficulty of brewing a free potion
     /// @dev Probability is calculated as inverse of difficulty. (1 / difficulty)
