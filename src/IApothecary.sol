@@ -9,6 +9,9 @@ error PotionsNotEnough(uint256 potionsLeft);
 error InvalidDifficulty();
 error VrfRequestPending(uint256 requestId);
 error InvalidVrfRequestId();
+error InvalidStartTime();
+error BrewNotStarted();
+error BrewHasStarted();
 
 interface IApothecary {
     event SentPotion(uint256 indexed doctorId, uint256 indexed potionId);
@@ -29,6 +32,8 @@ interface IApothecary {
 
     function doctors() external view returns (IERC721Enumerable);
 
+    function getStartTime() external view returns (uint256 brewStartTime);
+
     function getTotalBrewsCount() external view returns (uint256 brewsCount);
 
     function getTotalBrewsCount(uint256 _doctorId) external view returns (uint256 doctorBrewsCount);
@@ -48,6 +53,8 @@ interface IApothecary {
     function getLatestEpochTimestamp() external view returns (uint256 latestEpoch);
 
     function getTriedInEpoch(uint256 _epochTimestamp, uint256 _doctorId) external view returns (bool tried);
+
+    function setStartTime(uint256 _startTime) external;
 
     function setDifficulty(uint256 _difficulty) external;
 

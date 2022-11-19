@@ -25,6 +25,7 @@ contract ApothecaryTest is Test {
 
     // Apothecary config
     uint256 public difficulty = 100;
+    uint256 public brewStartTime = block.timestamp + 5 minutes;
 
     // PlagueGame init config
     uint256 public constant PLAGUE_DOCTORS_COUNT = 100;
@@ -87,6 +88,7 @@ contract ApothecaryTest is Test {
             IERC721Enumerable(potions),
             IERC721Enumerable(doctors),
             difficulty,
+            brewStartTime,
             VRFCoordinatorV2Interface(vrfCoordinator),
             subscriptionId,
             keyHash,
@@ -98,7 +100,12 @@ contract ApothecaryTest is Test {
         _mintPotionsToApothecary(APOTHECARY_POTIONS_COUNT);
     }
 
+    function testGetStartTime() public {
+        assertEq(apothecary.getStartTime(), brewStartTime, "Start time should be equal to timestamp set at deployment");
+    }
+
     function testGetTotalBrewsCount() public {
+        _skipToStartTime();
         uint256 MAX_EPOCH_ATTEMPTS = 10;
 
         uint256 i;
@@ -140,6 +147,7 @@ contract ApothecaryTest is Test {
     }
 
     function testGetBrewLogs() public {
+        _skipToStartTime();
         uint256 MAX_EPOCH_ATTEMPTS = 10;
         uint256 doctorA = doctors.tokenOfOwnerByIndex(PLAYER_1, 0);
         bool[] memory doctorABrewResults = new bool[](MAX_EPOCH_ATTEMPTS);
@@ -226,6 +234,7 @@ contract ApothecaryTest is Test {
     }
 
     function testGetTimeToNextEpoch() public {
+        _skipToStartTime();
         assertEq(
             apothecary.getTimeToNextEpoch(), 0, "Time to next epoch should be zero if no brew attempts has occured"
         );
@@ -252,6 +261,7 @@ contract ApothecaryTest is Test {
     }
 
     function testGetPotionsLeft() public {
+        _skipToStartTime();
         uint256 initialBalance = potions.balanceOf(address(apothecary));
         assertEq(
             initialBalance,
@@ -276,6 +286,7 @@ contract ApothecaryTest is Test {
     }
 
     function testGetVRFForEpoch() public {
+        _skipToStartTime();
         uint256[] memory fakeRandomWords = new uint256[](1);
         fakeRandomWords[0] = 1;
 
@@ -306,6 +317,7 @@ contract ApothecaryTest is Test {
     }
 
     function testGetLatestEpochTimestamp() public {
+        _skipToStartTime();
         assertEq(
             apothecary.getLatestEpochTimestamp(), 0, "Latest epoch timestamp should be zero before any brew attempts"
         );
@@ -345,6 +357,7 @@ contract ApothecaryTest is Test {
     }
 
     function testGetTriedInEpoch() public {
+        _skipToStartTime();
         uint256 doctorA = doctors.tokenOfOwnerByIndex(PLAYER_1, 0);
         uint256 doctorB = doctors.tokenOfOwnerByIndex(PLAYER_2, 0);
 
@@ -379,6 +392,31 @@ contract ApothecaryTest is Test {
             true,
             "It should show that doctorB attempted brew in current epoch"
         );
+    }
+
+    function testSetStartTime() public {
+        uint256 newStartTime = block.timestamp + 10 minutes;
+
+        vm.prank(ADMIN);
+        apothecary.setStartTime(newStartTime);
+
+        assertEq(apothecary.getStartTime(), newStartTime, "Start time should be set to new start time");
+    }
+
+    function testCannotSetStartTimestamp() public {
+        skip(1 minutes);
+        uint256 newStartTime = block.timestamp - 1;
+
+        vm.expectRevert(InvalidStartTime.selector);
+        vm.prank(ADMIN);
+        apothecary.setStartTime(newStartTime);
+
+        _skipToStartTime();
+        newStartTime = block.timestamp + 10 minutes;
+
+        vm.expectRevert(BrewHasStarted.selector);
+        vm.prank(ADMIN);
+        apothecary.setStartTime(newStartTime);
     }
 
     function testSetDifficulty() public {
@@ -470,6 +508,7 @@ contract ApothecaryTest is Test {
     }
 
     function testMakePotion() public {
+        _skipToStartTime();
         uint256 doctorId = doctors.tokenOfOwnerByIndex(PLAYER_1, 0);
 
         vm.prank(PLAYER_1);
@@ -483,7 +522,16 @@ contract ApothecaryTest is Test {
         );
     }
 
+    function testCannotMakePotionIfBrewNotStarted() public {
+        uint256 doctorId = doctors.tokenOfOwnerByIndex(PLAYER_1, 0);
+
+        vm.expectRevert(BrewNotStarted.selector);
+        vm.prank(PLAYER_1);
+        apothecary.makePotion(doctorId);
+    }
+
     function testCannotMakePotionIfDoctorIsDead() public {
+        _skipToStartTime();
         uint256 doctorId = doctors.tokenOfOwnerByIndex(PLAYER_1, 0);
 
         while (plagueGame.doctorStatus(doctorId) != IPlagueGame.Status.Dead) {
@@ -500,6 +548,7 @@ contract ApothecaryTest is Test {
     }
 
     function testCannotMakePotionIfDoctorHasBrewedInLatestEpoch() public {
+        _skipToStartTime();
         uint256 doctorId = doctors.tokenOfOwnerByIndex(PLAYER_1, 0);
 
         vm.prank(PLAYER_1);
@@ -513,6 +562,7 @@ contract ApothecaryTest is Test {
     }
 
     function testCannotMakePotionInBetweenVRFResponse() public {
+        _skipToStartTime();
         uint256 doctorA = doctors.tokenOfOwnerByIndex(PLAYER_1, 0);
         uint256 doctorB = doctors.tokenOfOwnerByIndex(PLAYER_2, 0);
 
@@ -547,6 +597,13 @@ contract ApothecaryTest is Test {
     function _mintDoctorsToPlayer(address _player, uint256 _count) private {
         vm.prank(_player);
         doctors.mint(_count);
+    }
+
+    function _skipToStartTime() private {
+        uint256 startTime = apothecary.getStartTime();
+        if (block.timestamp < startTime) {
+            vm.warp(startTime);
+        }
     }
 
     function _mockVRFResponse(address _consumer) private {
