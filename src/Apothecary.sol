@@ -19,8 +19,12 @@ contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 
     uint256 private difficulty;
     /// @notice Timestamp of the start of the latest (current) epoch
     uint256 private latestEpochTimestamp;
+    /// @notice Total number of all plague doctors brew attempts
+    uint256 private totalBrewsCount;
     /// @notice Duration of each epoch
     uint256 public constant EPOCH_DURATION = 6 hours;
+    /// @notice Number of latest brew logs to keep track of
+    uint256 public RECENT_BREW_LOGS_COUNT = 10;
     /// @notice Token ID of the plague doctor that called the VRF for the current epoch
     /// @dev Cache the ID of the plague doctor that called the VRF.
     /// @dev It avoids calling the VRF multiple times
@@ -33,8 +37,10 @@ contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 
     /// @notice Contract address of plague doctors NFT
     IERC721Enumerable public immutable override doctors;
 
-    /// @notice Brew logs of all plague doctors
-    BrewLog[] public brewLogs;
+    /// @notice Ordered brew logs of all plague doctors
+    BrewLog[] public allBrewLogs;
+    /// @notice Track brew logs of plague doctors
+    mapping(uint256 => BrewLog[]) private doctorBrewLogs;
     /// @notice Keep track if plague doctor has tried to brew in an epoch
     /// @dev Mapping from an epoch timestamp to plague doctor ID to tried state
     mapping(uint256 => mapping(uint256 => bool)) private triedBrewInEpoch;
@@ -144,7 +150,7 @@ contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 
     /// @notice Returns the total number of brew attempts from all doctors
     /// @return brewsCount Number of brew attempts from all doctors
     function getTotalBrewsCount() external view override returns (uint256 brewsCount) {
-        brewsCount = brewLogs.length;
+        brewsCount = totalBrewsCount;
     }
 
     /// @notice Returns the total number of brew attempts from a plague doctor
@@ -154,48 +160,45 @@ contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 
         doctorBrewsCount = _getTotalBrewsCount(_doctorId);
     }
 
-    /// @notice Returns the [n] latest brew logs
-    /// @dev Returns [n] number of brew logs if all brew logs is up to [n]
-    /// @param _count Number of latest brew logs to return
-    /// @return latestBrewLogs Last [n] brew logs
-    function getBrewLogs(uint256 _count) external view override returns (BrewLog[] memory) {
-        uint256 checkedLength = _count < brewLogs.length ? _count : brewLogs.length;
-        BrewLog[] memory latestBrewLogs = new BrewLog[](checkedLength);
+    /// @notice Returns the latest 10 brew logs
+    /// @return lastTenBrewLogs Latest 10 brew logs
+    function getlatestBrewLogs() external view override returns (BrewLog[10] memory lastTenBrewLogs) {
+        uint256 offsetIndex =
+            allBrewLogs.length > RECENT_BREW_LOGS_COUNT ? allBrewLogs.length - RECENT_BREW_LOGS_COUNT : 0;
+        uint256 allLogsCount = allBrewLogs.length;
 
-        uint256 j = brewLogs.length;
-        for (uint256 i = checkedLength; i > 0;) {
-            latestBrewLogs[i - 1] = brewLogs[j - 1];
+        for (uint256 i = 0; i < allLogsCount;) {
+            if (i == RECENT_BREW_LOGS_COUNT) {
+                break;
+            }
+
+            lastTenBrewLogs[i] = allBrewLogs[offsetIndex + i];
             unchecked {
-                --i;
-                --j;
+                ++i;
             }
         }
-
-        return latestBrewLogs;
     }
 
     /// @notice Returns the [n] brew logs of a plague doctor
     /// @dev Returns [n] number of brew logs if plague doctor has brewed up to [n] times
     /// @param _doctorId Token ID of plague doctor
     /// @param _count Number of latest brew logs to return
-    /// @return latestBrewLogs Last [n] brew logs of plague doctor
+    /// @return lastNBrewLogs Last [n] brew logs of plague doctor
     function getBrewLogs(uint256 _doctorId, uint256 _count) external view override returns (BrewLog[] memory) {
         uint256 totalDoctorBrews = _getTotalBrewsCount(_doctorId);
         uint256 checkedLength = _count < totalDoctorBrews ? _count : totalDoctorBrews;
-        BrewLog[] memory latestBrewLogs = new BrewLog[](checkedLength);
+        BrewLog[] memory lastNBrewLogs = new BrewLog[](checkedLength);
 
-        uint256 j = brewLogs.length;
+        uint256 j = totalDoctorBrews;
         for (uint256 i = checkedLength; i > 0;) {
-            if (brewLogs[j - 1].doctorId == _doctorId) {
-                latestBrewLogs[i - 1] = brewLogs[j - 1];
-            }
+            lastNBrewLogs[i - 1] = doctorBrewLogs[_doctorId][j - 1];
             unchecked {
                 --i;
                 --j;
             }
         }
 
-        return latestBrewLogs;
+        return lastNBrewLogs;
     }
 
     /// @notice Returns time in seconds till start of next epoch
@@ -371,6 +374,7 @@ contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 
         if (plagueGame.isGameOver()) {
             revert GameIsClosed();
         }
+        ++totalBrewsCount;
 
         BrewLog memory brewLog;
         triedBrewInEpoch[latestEpochTimestamp][_doctorId] = true;
@@ -392,7 +396,8 @@ contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 
 
         brewLog.doctorId = _doctorId;
         brewLog.timestamp = uint256(block.timestamp);
-        brewLogs.push(brewLog);
+        doctorBrewLogs[_doctorId].push(brewLog);
+        allBrewLogs.push(brewLog);
     }
 
     /// @notice Returns period start of epoch timestamp
@@ -433,15 +438,6 @@ contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 
     /// @param _doctorId Token ID of plague doctor
     /// @return doctorBrewsCount Number of brew attempts from plague doctor
     function _getTotalBrewsCount(uint256 _doctorId) private view returns (uint256 doctorBrewsCount) {
-        uint256 allBrewLogsCount = brewLogs.length;
-        for (uint256 i = 0; i < allBrewLogsCount;) {
-            if (brewLogs[i].doctorId == _doctorId) {
-                doctorBrewsCount += 1;
-            }
-
-            unchecked {
-                ++i;
-            }
-        }
+        doctorBrewsCount = doctorBrewLogs[_doctorId].length;
     }
 }

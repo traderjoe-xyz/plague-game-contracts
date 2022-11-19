@@ -146,6 +146,82 @@ contract ApothecaryTest is Test {
         );
     }
 
+    function testGetlatestBrewLogs() public {
+        // make sure the last 10 brews are in contract
+        _skipToStartTime();
+        vm.prank(ADMIN);
+        apothecary.setDifficulty(2);
+
+        uint256 MAX_EPOCH_ATTEMPTS = 7;
+        uint256 RECENT_BREW_LOGS_COUNT = apothecary.RECENT_BREW_LOGS_COUNT();
+        uint256 doctorA = doctors.tokenOfOwnerByIndex(PLAYER_1, 0);
+        uint256 doctorB = doctors.tokenOfOwnerByIndex(PLAYER_2, 0);
+
+        IApothecary.BrewLog[] memory doctorBrewResults = new IApothecary.BrewLog[](MAX_EPOCH_ATTEMPTS * 2);
+
+        bytes32 hash;
+        for (uint256 i = 0; i < MAX_EPOCH_ATTEMPTS * 2;) {
+            if (plagueGame.doctorStatus(doctorA) != IPlagueGame.Status.Dead) {
+                vm.prank(PLAYER_1);
+                apothecary.makePotion(doctorA);
+                _mockVRFResponse(address(apothecary));
+                hash = keccak256(
+                    abi.encodePacked(apothecary.getVRFForEpoch(apothecary.getLatestEpochTimestamp()), doctorA)
+                );
+                IApothecary.BrewLog memory brewLog;
+                brewLog.timestamp = block.timestamp;
+                brewLog.doctorId = doctorA;
+                brewLog.brewPotion = uint256(hash) % apothecary.getDifficulty() == 0;
+                doctorBrewResults[i++] = brewLog;
+            }
+
+            if (plagueGame.doctorStatus(doctorB) != IPlagueGame.Status.Dead) {
+                vm.prank(PLAYER_2);
+                apothecary.makePotion(doctorB);
+                hash = keccak256(
+                    abi.encodePacked(apothecary.getVRFForEpoch(apothecary.getLatestEpochTimestamp()), doctorB)
+                );
+                IApothecary.BrewLog memory brewLog;
+                brewLog.timestamp = block.timestamp;
+                brewLog.doctorId = doctorB;
+                brewLog.brewPotion = uint256(hash) % apothecary.getDifficulty() == 0;
+                doctorBrewResults[i++] = brewLog;
+            }
+
+            skip(apothecary.EPOCH_DURATION() + 1);
+        }
+
+        uint256 offsetIndex =
+            doctorBrewResults.length > RECENT_BREW_LOGS_COUNT ? doctorBrewResults.length - RECENT_BREW_LOGS_COUNT : 0;
+        uint256 allLogsCount = doctorBrewResults.length;
+
+        for (uint256 i = 0; i < allLogsCount;) {
+            if (i == RECENT_BREW_LOGS_COUNT) {
+                break;
+            }
+
+            assertEq(
+                apothecary.getlatestBrewLogs()[i].timestamp,
+                doctorBrewResults[offsetIndex + i].timestamp,
+                "Timestamp for recent brew should be orderly tracked"
+            );
+            assertEq(
+                apothecary.getlatestBrewLogs()[i].doctorId,
+                doctorBrewResults[offsetIndex + i].doctorId,
+                "Doctor ID for recent brew should be orderly tracked"
+            );
+            assertEq(
+                apothecary.getlatestBrewLogs()[i].brewPotion,
+                doctorBrewResults[offsetIndex + i].brewPotion,
+                "Success for recent brew should be orderly tracked"
+            );
+
+            unchecked {
+                ++i;
+            }
+        }
+    }
+
     function testGetBrewLogs() public {
         _skipToStartTime();
         uint256 MAX_EPOCH_ATTEMPTS = 10;
