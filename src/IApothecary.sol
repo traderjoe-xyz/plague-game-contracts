@@ -27,9 +27,11 @@ interface IApothecary {
 
     function doctors() external view returns (IERC721Enumerable);
 
-    function getStartTime() external view returns (uint256 brewStartTime);
+    function startTime() external view returns (uint256);
 
-    function getTotalBrewsCount() external view returns (uint256 brewsCount);
+    function totalPotionsMinted() external view returns (uint256);
+
+    function totalBrewsCount() external view returns (uint256);
 
     function getTotalBrewsCount(uint256 _doctorId) external view returns (uint256 doctorBrewsCount);
 
@@ -43,9 +45,9 @@ interface IApothecary {
 
     function getVRFForEpoch(uint256 _epochTimestamp) external view returns (uint256 epochVRF);
 
-    function getDifficulty() external view returns (uint256 winDifficulty);
+    function difficulty() external view returns (uint256 winDifficulty);
 
-    function getLatestEpochTimestamp() external view returns (uint256 latestEpoch);
+    function latestEpochTimestamp() external view returns (uint256 latestEpoch);
 
     function getTriedInEpoch(uint256 _epochTimestamp, uint256 _doctorId) external view returns (bool tried);
 
