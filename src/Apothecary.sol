@@ -32,7 +32,7 @@ contract Apothecary is IApothecary, Ownable, VRFConsumerBaseV2 {
     /// @notice Contract address of plague game
     IPlagueGame public immutable override plagueGame;
     /// @notice Contract address of potions NFT
-    IERC721Enumerable public immutable override potions;
+    ILaunchpeg public immutable override potions;
     /// @notice Contract address of plague doctors NFT
     IERC721Enumerable public immutable override doctors;
 
@@ -44,6 +44,8 @@ contract Apothecary is IApothecary, Ownable, VRFConsumerBaseV2 {
     /// @dev Potions owner by the contract
     uint256[] private potionsOwnedByContract;
 
+    /// @notice Used to check if a doctor already minted its first potion
+    mapping(uint256 => bool) public hasMintedFirstPotion;
     /// @notice Keep track if plague doctor has tried to brew in an epoch
     /// @dev Mapping from an epoch timestamp to plague doctor ID to tried state
     mapping(uint256 => mapping(uint256 => bool)) private triedBrewInEpoch;
@@ -109,7 +111,7 @@ contract Apothecary is IApothecary, Ownable, VRFConsumerBaseV2 {
     /// @param _maxGas Max gas used on the VRF callback
     constructor(
         IPlagueGame _plagueGame,
-        IERC721Enumerable _potions,
+        ILaunchpeg _potions,
         IERC721Enumerable _doctors,
         uint256 _difficulty,
         uint256 _startTime,
@@ -263,20 +265,28 @@ contract Apothecary is IApothecary, Ownable, VRFConsumerBaseV2 {
         doctorIsAlive(_doctorId)
         hasNotBrewedInLatestEpoch(_doctorId)
     {
-        if (_getEpochStart(uint256(block.timestamp)) > latestEpochTimestamp) {
-            uint256 nextEpochTimestampCache = _getEpochStart(uint256(block.timestamp));
-            uint256 pendingRequestId = epochRequestId[nextEpochTimestampCache];
+        if (hasMintedFirstPotion[_doctorId]) {
+            if (_getEpochStart(uint256(block.timestamp)) > latestEpochTimestamp) {
+                uint256 nextEpochTimestampCache = _getEpochStart(uint256(block.timestamp));
+                uint256 pendingRequestId = epochRequestId[nextEpochTimestampCache];
 
-            if (pendingRequestId != 0) {
-                revert VrfRequestPending(pendingRequestId);
+                if (pendingRequestId != 0) {
+                    revert VrfRequestPending(pendingRequestId);
+                }
+
+                plagueDoctorVRFCaller = _doctorId;
+                epochRequestId[nextEpochTimestampCache] = vrfCoordinator.requestRandomWords(
+                    keyHash, subscriptionId, VRF_BLOCK_CONFIRMATIONS, maxGas, RANDOM_NUMBERS_COUNT
+                );
+            } else {
+                _brew(_doctorId);
             }
-
-            plagueDoctorVRFCaller = _doctorId;
-            epochRequestId[nextEpochTimestampCache] = vrfCoordinator.requestRandomWords(
-                keyHash, subscriptionId, VRF_BLOCK_CONFIRMATIONS, maxGas, RANDOM_NUMBERS_COUNT
-            );
         } else {
-            _brew(_doctorId);
+            uint256 totalSupply = potions.totalSupply();
+            potions.devMint(1);
+            hasMintedFirstPotion[_doctorId] = true;
+
+            potions.transferFrom(address(this), doctors.ownerOf(_doctorId), totalSupply);
         }
     }
 

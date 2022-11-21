@@ -24,8 +24,8 @@ contract ApothecaryTest is PlagueGameTest {
         super.setUp();
 
         apothecary = new Apothecary(
-            IPlagueGame(plagueGame),
-            IERC721Enumerable(potions),
+            plagueGame,
+            ILaunchpeg(address(potions)),
             IERC721Enumerable(doctors),
             difficulty,
             brewStartTime,
@@ -39,9 +39,13 @@ contract ApothecaryTest is PlagueGameTest {
         _transferDocsToPlayers();
 
         potions.setApprovalForAll(address(apothecary), true);
-        _addPotions(100);
+        _addPotions(200);
 
         vm.warp(brewStartTime);
+
+        for (uint256 i = 0; i < doctors.totalSupply(); i++) {
+            apothecary.makePotion(i);
+        }
 
         plagueGame.startGame();
         coordinator.fulfillRandomWords(s_nextRequestId++, address(plagueGame));

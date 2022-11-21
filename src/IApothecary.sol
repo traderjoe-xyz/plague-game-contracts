@@ -4,6 +4,10 @@ pragma solidity ^0.8.13;
 import "./IPlagueGame.sol";
 import "./Errors.sol";
 
+interface ILaunchpeg is IERC721Enumerable {
+    function devMint(uint256 amount) external;
+}
+
 interface IApothecary {
     event SentPotion(uint256 indexed doctorId, uint256 indexed potionId);
 
@@ -19,7 +23,7 @@ interface IApothecary {
 
     function plagueGame() external view returns (IPlagueGame);
 
-    function potions() external view returns (IERC721Enumerable);
+    function potions() external view returns (ILaunchpeg);
 
     function doctors() external view returns (IERC721Enumerable);
 

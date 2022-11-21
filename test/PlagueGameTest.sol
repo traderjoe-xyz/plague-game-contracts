@@ -6,6 +6,7 @@ import "forge-std/Test.sol";
 import "src/PlagueGame.sol";
 import "src/IPlagueGame.sol";
 import "./mocks/ERC721.sol";
+import "./mocks/Launchpeg.sol";
 import "chainlink/mocks/VRFCoordinatorV2Mock.sol";
 
 error OnlyCoordinatorCanFulfill(address have, address want);
@@ -37,7 +38,7 @@ contract PlagueGameTest is Test {
 
     PlagueGame plagueGame;
     ERC721Mock doctors;
-    ERC721Mock potions;
+    Launchpeg potions;
     VRFCoordinatorV2Mock coordinator;
 
     uint256 lastPotionUsed;
@@ -46,11 +47,10 @@ contract PlagueGameTest is Test {
 
     function setUp() public virtual {
         doctors = new ERC721Mock();
-        potions = new ERC721Mock();
+        potions = new Launchpeg();
         coordinator = new VRFCoordinatorV2Mock(0,1);
 
         doctors.mint(collectionSize);
-        potions.mint(collectionSize);
 
         // VRF setup
         subscriptionId = coordinator.createSubscription();
