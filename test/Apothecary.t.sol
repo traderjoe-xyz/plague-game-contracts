@@ -7,81 +7,21 @@ import "forge-std/Test.sol";
 import "src/Apothecary.sol";
 import "src/PlagueGame.sol";
 import "./mocks/ERC721.sol";
+import "./PlagueGameTest.sol";
 import "chainlink/mocks/VRFCoordinatorV2Mock.sol";
 import "chainlink/interfaces/VRFCoordinatorV2Interface.sol";
 
-contract ApothecaryTest is Test {
-    Apothecary public apothecary;
-    PlagueGame public plagueGame;
-    ERC721Mock public potions;
-    ERC721Mock public doctors;
-    VRFCoordinatorV2Mock public vrfCoordinator;
-    uint256 s_nextRequestId = 1;
+contract ApothecaryTest is PlagueGameTest {
+    Apothecary apothecary;
 
-    // Test variables
-    address public constant ADMIN = address(0xa);
-    address public constant PLAYER_1 = address(0xb);
-    address public constant PLAYER_2 = address(0xc);
+    // // Apothecary config
+    uint256 difficulty = 100;
+    uint256 brewStartTime = block.timestamp + 5 minutes;
 
-    // Apothecary config
-    uint256 public difficulty = 100;
-    uint256 public brewStartTime = block.timestamp + 5 minutes;
+    uint256[] apothecaryPotionsIds;
 
-    // PlagueGame init config
-    uint256 public constant PLAGUE_DOCTORS_COUNT = 100;
-    uint256 epochDuration = 6 hours;
-    uint256 playerNumberToEndGame = 10;
-    uint256[] infectionPercentagePerEpoch =
-        [2_000, 2_000, 2_000, 3_000, 3_000, 3_000, 4_000, 4_000, 4_000, 5_000, 5_000, 5_000];
-
-    // VRF config
-    uint64 subscriptionId;
-    bytes32 keyHash = "";
-    uint32 maxGas = 1_800_000;
-    uint96 lastSubscriptionBalance = 100 ether;
-
-    function setUp() public {
-        vm.startPrank(ADMIN);
-        potions = new ERC721Mock();
-        doctors = new ERC721Mock();
-        vrfCoordinator = new VRFCoordinatorV2Mock(0, 1);
-        vm.stopPrank();
-
-        uint256 collectionSize = 1000;
-
-        _mintDoctorsToPlayer(PLAYER_1, PLAGUE_DOCTORS_COUNT / 2);
-        _mintDoctorsToPlayer(PLAYER_2, PLAGUE_DOCTORS_COUNT / 2);
-
-        vm.startPrank(ADMIN);
-
-        subscriptionId = vrfCoordinator.createSubscription();
-        vrfCoordinator.fundSubscription(subscriptionId, lastSubscriptionBalance);
-
-        plagueGame = new PlagueGame(
-            IERC721Enumerable(doctors),
-            IERC721Enumerable(potions),
-            infectionPercentagePerEpoch,
-            playerNumberToEndGame,
-            epochDuration,
-            VRFCoordinatorV2Interface(vrfCoordinator),
-            subscriptionId,
-            keyHash,
-            maxGas
-        );
-        vrfCoordinator.addConsumer(subscriptionId, address(plagueGame));
-        vm.deal(address(plagueGame), 1 ether);
-
-        for (uint256 i = 0; i < 10;) {
-            plagueGame.initializeGame(PLAGUE_DOCTORS_COUNT / 10);
-            unchecked {
-                ++i;
-            }
-        }
-
-        plagueGame.startGame();
-        _mockVRFResponse(address(plagueGame));
-
-        plagueGame.startEpoch();
+    function setUp() public override {
+        super.setUp();
 
         apothecary = new Apothecary(
             IPlagueGame(plagueGame),
@@ -89,15 +29,35 @@ contract ApothecaryTest is Test {
             IERC721Enumerable(doctors),
             difficulty,
             brewStartTime,
-            VRFCoordinatorV2Interface(vrfCoordinator),
+            VRFCoordinatorV2Interface(coordinator),
             subscriptionId,
             keyHash,
             maxGas
         );
-        vrfCoordinator.addConsumer(subscriptionId, address(apothecary));
-        vm.stopPrank();
-        uint256 APOTHECARY_POTIONS_COUNT = 100;
-        _mintPotionsToApothecary(APOTHECARY_POTIONS_COUNT);
+        coordinator.addConsumer(subscriptionId, address(apothecary));
+
+        _transferDocsToPlayers();
+
+        potions.setApprovalForAll(address(apothecary), true);
+        _addPotions(100);
+
+        vm.warp(brewStartTime);
+
+        plagueGame.startGame();
+        coordinator.fulfillRandomWords(s_nextRequestId++, address(plagueGame));
+    }
+
+    function _addPotions(uint256 _amount) private {
+        uint256 totalSupply = potions.totalSupply();
+
+        potions.mint(_amount);
+        apothecaryPotionsIds = new uint256[](0);
+
+        for (uint256 i = totalSupply; i < totalSupply + _amount; i++) {
+            apothecaryPotionsIds.push(i);
+        }
+
+        apothecary.addPotions(apothecaryPotionsIds);
     }
 
     function testGetStartTime() public {
@@ -105,7 +65,6 @@ contract ApothecaryTest is Test {
     }
 
     function testGetTotalBrewsCount() public {
-        _skipToStartTime();
         uint256 MAX_EPOCH_ATTEMPTS = 10;
 
         uint256 i;
@@ -113,11 +72,11 @@ contract ApothecaryTest is Test {
         uint256 brewsCount;
         while (i < MAX_EPOCH_ATTEMPTS) {
             // brew potions for all alive doctors owned by player1
-            for (uint256 j = 0; j < doctors.balanceOf(PLAYER_1);) {
-                doctorId = doctors.tokenOfOwnerByIndex(PLAYER_1, j);
+            for (uint256 j = 0; j < doctors.balanceOf(ALICE);) {
+                doctorId = doctors.tokenOfOwnerByIndex(ALICE, j);
 
                 if (plagueGame.doctorStatus(doctorId) != IPlagueGame.Status.Dead) {
-                    vm.prank(PLAYER_1);
+                    vm.prank(ALICE);
                     apothecary.makePotion(doctorId);
 
                     // simulate VRF response if that's the first call in that epoch
@@ -148,21 +107,20 @@ contract ApothecaryTest is Test {
 
     function testGetlatestBrewLogs() public {
         // make sure the last 10 brews are in contract
-        _skipToStartTime();
-        vm.prank(ADMIN);
+
         apothecary.setDifficulty(2);
 
         uint256 MAX_EPOCH_ATTEMPTS = 7;
         uint256 RECENT_BREW_LOGS_COUNT = apothecary.RECENT_BREW_LOGS_COUNT();
-        uint256 doctorA = doctors.tokenOfOwnerByIndex(PLAYER_1, 0);
-        uint256 doctorB = doctors.tokenOfOwnerByIndex(PLAYER_2, 0);
+        uint256 doctorA = doctors.tokenOfOwnerByIndex(ALICE, 0);
+        uint256 doctorB = doctors.tokenOfOwnerByIndex(BOB, 0);
 
         IApothecary.BrewLog[] memory doctorBrewResults = new IApothecary.BrewLog[](MAX_EPOCH_ATTEMPTS * 2);
 
         bytes32 hash;
         for (uint256 i = 0; i < MAX_EPOCH_ATTEMPTS * 2;) {
             if (plagueGame.doctorStatus(doctorA) != IPlagueGame.Status.Dead) {
-                vm.prank(PLAYER_1);
+                vm.prank(ALICE);
                 apothecary.makePotion(doctorA);
                 _mockVRFResponse(address(apothecary));
                 hash = keccak256(
@@ -176,7 +134,7 @@ contract ApothecaryTest is Test {
             }
 
             if (plagueGame.doctorStatus(doctorB) != IPlagueGame.Status.Dead) {
-                vm.prank(PLAYER_2);
+                vm.prank(BOB);
                 apothecary.makePotion(doctorB);
                 hash = keccak256(
                     abi.encodePacked(apothecary.getVRFForEpoch(apothecary.getLatestEpochTimestamp()), doctorB)
@@ -223,20 +181,19 @@ contract ApothecaryTest is Test {
     }
 
     function testGetBrewLogs() public {
-        _skipToStartTime();
         uint256 MAX_EPOCH_ATTEMPTS = 10;
-        uint256 doctorA = doctors.tokenOfOwnerByIndex(PLAYER_1, 0);
+        uint256 doctorA = doctors.tokenOfOwnerByIndex(ALICE, 0);
         bool[] memory doctorABrewResults = new bool[](MAX_EPOCH_ATTEMPTS);
         uint256 doctorABrewsCount;
 
-        uint256 doctorB = doctors.tokenOfOwnerByIndex(PLAYER_2, 0);
+        uint256 doctorB = doctors.tokenOfOwnerByIndex(BOB, 0);
         bool[] memory doctorBBrewResults = new bool[](MAX_EPOCH_ATTEMPTS);
         uint256 doctorBBrewsCount;
 
         bytes32 hash;
         for (uint256 i = 0; i < MAX_EPOCH_ATTEMPTS;) {
             if (plagueGame.doctorStatus(doctorA) != IPlagueGame.Status.Dead) {
-                vm.prank(PLAYER_1);
+                vm.prank(ALICE);
                 apothecary.makePotion(doctorA);
                 _mockVRFResponse(address(apothecary));
                 hash = keccak256(
@@ -250,7 +207,7 @@ contract ApothecaryTest is Test {
             }
 
             if (plagueGame.doctorStatus(doctorB) != IPlagueGame.Status.Dead) {
-                vm.prank(PLAYER_2);
+                vm.prank(BOB);
                 apothecary.makePotion(doctorB);
                 hash = keccak256(
                     abi.encodePacked(apothecary.getVRFForEpoch(apothecary.getLatestEpochTimestamp()), doctorB)
@@ -310,13 +267,12 @@ contract ApothecaryTest is Test {
     }
 
     function testGetTimeToNextEpoch() public {
-        _skipToStartTime();
         assertEq(
             apothecary.getTimeToNextEpoch(), 0, "Time to next epoch should be zero if no brew attempts has occured"
         );
 
-        uint256 doctorId = doctors.tokenOfOwnerByIndex(PLAYER_1, 0);
-        vm.prank(PLAYER_1);
+        uint256 doctorId = doctors.tokenOfOwnerByIndex(ALICE, 0);
+        vm.prank(ALICE);
         apothecary.makePotion(doctorId);
         _mockVRFResponse(address(apothecary));
         skip(apothecary.EPOCH_DURATION() / 2);
@@ -337,7 +293,6 @@ contract ApothecaryTest is Test {
     }
 
     function testGetPotionsLeft() public {
-        _skipToStartTime();
         uint256 initialBalance = potions.balanceOf(address(apothecary));
         assertEq(
             initialBalance,
@@ -346,11 +301,10 @@ contract ApothecaryTest is Test {
         );
 
         // brew with a difficulty of [1] (guarantees plague doctor will get a potion)
-        vm.prank(ADMIN);
         apothecary.setDifficulty(1);
 
-        uint256 doctorId = doctors.tokenOfOwnerByIndex(PLAYER_1, 0);
-        vm.prank(PLAYER_1);
+        uint256 doctorId = doctors.tokenOfOwnerByIndex(ALICE, 0);
+        vm.prank(ALICE);
         apothecary.makePotion(doctorId);
         _mockVRFResponse(address(apothecary));
 
@@ -362,14 +316,13 @@ contract ApothecaryTest is Test {
     }
 
     function testGetVRFForEpoch() public {
-        _skipToStartTime();
         uint256[] memory fakeRandomWords = new uint256[](1);
         fakeRandomWords[0] = 1;
 
-        uint256 doctorId = doctors.tokenOfOwnerByIndex(PLAYER_1, 0);
-        vm.prank(PLAYER_1);
+        uint256 doctorId = doctors.tokenOfOwnerByIndex(ALICE, 0);
+        vm.prank(ALICE);
         apothecary.makePotion(doctorId);
-        vrfCoordinator.fulfillRandomWordsWithOverride(s_nextRequestId++, address(apothecary), fakeRandomWords);
+        coordinator.fulfillRandomWordsWithOverride(s_nextRequestId++, address(apothecary), fakeRandomWords);
 
         assertEq(
             apothecary.getVRFForEpoch(apothecary.getLatestEpochTimestamp()),
@@ -386,21 +339,19 @@ contract ApothecaryTest is Test {
         );
 
         uint256 newDifficulty = 50;
-        vm.prank(ADMIN);
         apothecary.setDifficulty(newDifficulty);
 
         assertEq(apothecary.getDifficulty(), newDifficulty, "Difficulty should be equal to new difficulty set");
     }
 
     function testGetLatestEpochTimestamp() public {
-        _skipToStartTime();
         assertEq(
             apothecary.getLatestEpochTimestamp(), 0, "Latest epoch timestamp should be zero before any brew attempts"
         );
 
         // latestEpochTimestamp is tracked on first brew attempt
-        uint256 doctorId = doctors.tokenOfOwnerByIndex(PLAYER_1, 0);
-        vm.prank(PLAYER_1);
+        uint256 doctorId = doctors.tokenOfOwnerByIndex(ALICE, 0);
+        vm.prank(ALICE);
         apothecary.makePotion(doctorId);
         _mockVRFResponse(address(apothecary));
 
@@ -413,7 +364,7 @@ contract ApothecaryTest is Test {
 
         // attempt brew again in next epoch to track latestEpochTimestamp
         skip(apothecary.EPOCH_DURATION() + 1);
-        vm.prank(PLAYER_1);
+        vm.prank(ALICE);
         apothecary.makePotion(doctorId);
         _mockVRFResponse(address(apothecary));
 
@@ -433,11 +384,10 @@ contract ApothecaryTest is Test {
     }
 
     function testGetTriedInEpoch() public {
-        _skipToStartTime();
-        uint256 doctorA = doctors.tokenOfOwnerByIndex(PLAYER_1, 0);
-        uint256 doctorB = doctors.tokenOfOwnerByIndex(PLAYER_2, 0);
+        uint256 doctorA = doctors.tokenOfOwnerByIndex(ALICE, 0);
+        uint256 doctorB = doctors.tokenOfOwnerByIndex(BOB, 0);
 
-        vm.prank(PLAYER_1);
+        vm.prank(ALICE);
         apothecary.makePotion(doctorA);
         _mockVRFResponse(address(apothecary));
 
@@ -454,7 +404,7 @@ contract ApothecaryTest is Test {
 
         skip(apothecary.EPOCH_DURATION() + 1);
 
-        vm.prank(PLAYER_2);
+        vm.prank(BOB);
         apothecary.makePotion(doctorB);
         _mockVRFResponse(address(apothecary));
 
@@ -471,34 +421,31 @@ contract ApothecaryTest is Test {
     }
 
     function testSetStartTime() public {
+        vm.warp(brewStartTime - 1);
         uint256 newStartTime = block.timestamp + 10 minutes;
 
-        vm.prank(ADMIN);
         apothecary.setStartTime(newStartTime);
 
         assertEq(apothecary.getStartTime(), newStartTime, "Start time should be set to new start time");
     }
 
     function testCannotSetStartTimestamp() public {
-        skip(1 minutes);
+        vm.warp(brewStartTime - 1);
         uint256 newStartTime = block.timestamp - 1;
 
         vm.expectRevert(InvalidStartTime.selector);
-        vm.prank(ADMIN);
         apothecary.setStartTime(newStartTime);
 
-        _skipToStartTime();
+        skip(1 minutes);
         newStartTime = block.timestamp + 10 minutes;
 
         vm.expectRevert(BrewHasStarted.selector);
-        vm.prank(ADMIN);
         apothecary.setStartTime(newStartTime);
     }
 
     function testSetDifficulty() public {
         uint256 newDifficulty = 10;
 
-        vm.prank(ADMIN);
         apothecary.setDifficulty(newDifficulty);
 
         assertEq(apothecary.getDifficulty(), newDifficulty, "It should set difficulty to new difficulty");
@@ -508,7 +455,6 @@ contract ApothecaryTest is Test {
         uint256 newDifficulty = 100_001;
 
         vm.expectRevert(InvalidDifficulty.selector);
-        vm.prank(ADMIN);
         apothecary.setDifficulty(newDifficulty);
     }
 
@@ -516,33 +462,32 @@ contract ApothecaryTest is Test {
         uint256 newDifficulty = 0;
 
         vm.expectRevert(InvalidDifficulty.selector);
-        vm.prank(ADMIN);
         apothecary.setDifficulty(newDifficulty);
     }
 
-    function testFailSetDifficultyIfNotOwner() public {
+    function testSetDifficultyIfNotOwner() public {
         uint256 newDifficulty = 10;
 
+        vm.prank(BOB);
+        vm.expectRevert("Ownable: caller is not the owner");
         apothecary.setDifficulty(newDifficulty);
     }
 
     function testAddPotions() public {
-        vm.startPrank(ADMIN);
         potions.mint(1);
-        uint256 potionId = potions.tokenOfOwnerByIndex(ADMIN, 0);
+        uint256 potionId = potions.tokenOfOwnerByIndex(address(this), 0);
 
         potions.approve(address(apothecary), potionId);
 
         uint256 apothecaryInitialBalance = potions.balanceOf(address(apothecary));
-        uint256 adminInitialBalance = potions.balanceOf(ADMIN);
+        uint256 adminInitialBalance = potions.balanceOf(address(this));
 
         uint256[] memory potionIds = new uint256[](1);
         potionIds[0] = potionId;
         apothecary.addPotions(potionIds);
-        vm.stopPrank();
 
         assertEq(
-            potions.balanceOf(ADMIN),
+            potions.balanceOf(address(this)),
             adminInitialBalance - potionIds.length,
             "Potions balance of ADMIN should reduce by one"
         );
@@ -554,40 +499,11 @@ contract ApothecaryTest is Test {
         assertEq(potions.ownerOf(potionId), address(apothecary), "APOTHECARY should be the owner of the potion ID");
     }
 
-    function testRemovePotions() public {
-        uint256 potionA = potions.tokenOfOwnerByIndex(address(apothecary), 0);
-        uint256 potionB = potions.tokenOfOwnerByIndex(address(apothecary), 1);
-
-        uint256 apothecaryInitialBalance = potions.balanceOf(address(apothecary));
-        uint256 adminInitialBalance = potions.balanceOf(ADMIN);
-
-        uint256[] memory potionIds = new uint256[](2);
-        potionIds[0] = potionA;
-        potionIds[1] = potionB;
-
-        vm.prank(ADMIN);
-        apothecary.removePotions(potionIds);
-
-        assertEq(
-            potions.balanceOf(ADMIN),
-            adminInitialBalance + potionIds.length,
-            "Potions balance of ADMIN should increase by number of potions sent"
-        );
-        assertEq(
-            potions.balanceOf(address(apothecary)),
-            apothecaryInitialBalance - potionIds.length,
-            "Potions balance of APOTHECARY should reduce by number of potions sent"
-        );
-
-        assertEq(potions.ownerOf(potionA), ADMIN, "PotionA should be owned by ADMIN");
-        assertEq(potions.ownerOf(potionB), ADMIN, "PotionB should be owned by ADMIN");
-    }
-
     function testMakePotion() public {
-        _skipToStartTime();
-        uint256 doctorId = doctors.tokenOfOwnerByIndex(PLAYER_1, 0);
+        vm.warp(brewStartTime);
+        uint256 doctorId = doctors.tokenOfOwnerByIndex(ALICE, 0);
 
-        vm.prank(PLAYER_1);
+        vm.prank(ALICE);
         apothecary.makePotion(doctorId);
         _mockVRFResponse(address(apothecary));
 
@@ -599,101 +515,56 @@ contract ApothecaryTest is Test {
     }
 
     function testCannotMakePotionIfBrewNotStarted() public {
-        uint256 doctorId = doctors.tokenOfOwnerByIndex(PLAYER_1, 0);
+        vm.warp(brewStartTime - 1);
+
+        uint256 doctorId = doctors.tokenOfOwnerByIndex(ALICE, 0);
 
         vm.expectRevert(BrewNotStarted.selector);
-        vm.prank(PLAYER_1);
-        apothecary.makePotion(doctorId);
-    }
-
-    function testCannotMakePotionIfDoctorIsDead() public {
-        _skipToStartTime();
-        uint256 doctorId = doctors.tokenOfOwnerByIndex(PLAYER_1, 0);
-
-        while (plagueGame.doctorStatus(doctorId) != IPlagueGame.Status.Dead) {
-            skip(apothecary.EPOCH_DURATION() + 1);
-            plagueGame.endEpoch();
-            _mockVRFResponse(address(plagueGame));
-
-            plagueGame.startEpoch();
-        }
-
-        vm.expectRevert(DoctorIsDead.selector);
-        vm.prank(PLAYER_1);
+        vm.prank(ALICE);
         apothecary.makePotion(doctorId);
     }
 
     function testCannotMakePotionIfDoctorHasBrewedInLatestEpoch() public {
-        _skipToStartTime();
-        uint256 doctorId = doctors.tokenOfOwnerByIndex(PLAYER_1, 0);
+        uint256 doctorId = doctors.tokenOfOwnerByIndex(ALICE, 0);
 
-        vm.prank(PLAYER_1);
+        vm.prank(ALICE);
         apothecary.makePotion(doctorId);
         _mockVRFResponse(address(apothecary));
 
         // attempt to brew potion again in same epoch
         vm.expectRevert(abi.encodeWithSelector(DoctorHasBrewed.selector, apothecary.getLatestEpochTimestamp()));
-        vm.prank(PLAYER_1);
+        vm.prank(ALICE);
         apothecary.makePotion(doctorId);
     }
 
     function testCannotMakePotionInBetweenVRFResponse() public {
-        _skipToStartTime();
-        uint256 doctorA = doctors.tokenOfOwnerByIndex(PLAYER_1, 0);
-        uint256 doctorB = doctors.tokenOfOwnerByIndex(PLAYER_2, 0);
+        uint256 doctorA = doctors.tokenOfOwnerByIndex(ALICE, 0);
+        uint256 doctorB = doctors.tokenOfOwnerByIndex(BOB, 0);
 
-        vm.prank(PLAYER_1);
+        vm.prank(ALICE);
         apothecary.makePotion(doctorA);
 
         vm.expectRevert(abi.encodeWithSelector(VrfRequestPending.selector, s_nextRequestId));
-        vm.prank(PLAYER_2);
+        vm.prank(BOB);
         apothecary.makePotion(doctorB);
     }
-
-    // function testCannotMakePotionWithInvalidVRFRequestId() public {
-    //     uint256 doctorId = doctors.tokenOfOwnerByIndex(PLAYER_1, 0);
-    // 	uint256[] memory mockRandomWords = new uint256[](1);
-    //     mockRandomWords[0] = 1;
-
-    //     vm.prank(PLAYER_1);
-    //     apothecary.makePotion(doctorId);
-
-    // 	vm.expectRevert(InvalidVrfRequestId.selector);
-    // 	vrfCoordinator.fulfillRandomWords(s_nextRequestId - 1, address(apothecary));
-    // }
 
     /**
      * Helper Functions *
      */
-    function _mintPotionsToApothecary(uint256 _count) private {
-        vm.prank(address(apothecary));
-        potions.mint(_count);
-    }
-
-    function _mintDoctorsToPlayer(address _player, uint256 _count) private {
-        vm.prank(_player);
-        doctors.mint(_count);
-    }
-
-    function _skipToStartTime() private {
-        uint256 startTime = apothecary.getStartTime();
-        if (block.timestamp < startTime) {
-            vm.warp(startTime);
-        }
-    }
 
     function _mockVRFResponse(address _consumer) private {
-        vrfCoordinator.fulfillRandomWords(s_nextRequestId++, _consumer);
+        coordinator.fulfillRandomWords(s_nextRequestId++, _consumer);
         _checkVRFCost();
     }
 
-    // Safety check to be sure we have a 50% margin on VRF requests for max gas used
-    function _checkVRFCost() private {
-        (uint96 vrfBalance,,,) = vrfCoordinator.getSubscription(subscriptionId);
+    function _transferDocsToPlayers() private {
+        for (uint256 i = 0; i < 10; i++) {
+            doctors.transferFrom(address(this), ALICE, i);
+        }
 
-        assertLt(
-            (lastSubscriptionBalance - vrfBalance) * 15_000 / 10_000, maxGas, "Too much gas has been consumed by VRF"
-        );
-        lastSubscriptionBalance = vrfBalance;
+        for (uint256 i = 10; i < 20; i++) {
+            doctors.transferFrom(address(this), BOB, i);
+        }
     }
 }

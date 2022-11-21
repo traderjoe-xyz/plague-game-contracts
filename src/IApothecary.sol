@@ -2,23 +2,14 @@
 pragma solidity ^0.8.13;
 
 import "./IPlagueGame.sol";
-
-error DoctorIsDead();
-error DoctorHasBrewed(uint256 epochTimestamp);
-error PotionsNotEnough(uint256 potionsLeft);
-error InvalidDifficulty();
-error VrfRequestPending(uint256 requestId);
-error InvalidVrfRequestId();
-error InvalidStartTime();
-error BrewNotStarted();
-error BrewHasStarted();
+import "./Errors.sol";
 
 interface IApothecary {
     event SentPotion(uint256 indexed doctorId, uint256 indexed potionId);
 
     event PotionsAdded(uint256[] potions);
 
-    event PotionsRemoved(uint256[] potions);
+    event PotionsRemoved(uint256 amount);
 
     struct BrewLog {
         uint256 timestamp;
@@ -60,7 +51,7 @@ interface IApothecary {
 
     function addPotions(uint256[] memory _potionIds) external;
 
-    function removePotions(uint256[] memory _potionIds) external;
+    function removePotions(uint256 amount) external;
 
     function makePotion(uint256 _doctorId) external;
 }

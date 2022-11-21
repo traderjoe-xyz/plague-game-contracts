@@ -2,7 +2,6 @@
 pragma solidity ^0.8.13;
 
 import "openzeppelin/access/Ownable.sol";
-import "openzeppelin/token/ERC721/IERC721Receiver.sol";
 import "chainlink/VRFConsumerBaseV2.sol";
 import "chainlink/interfaces/VRFCoordinatorV2Interface.sol";
 import "./IApothecary.sol";
@@ -11,7 +10,7 @@ import "./IPlagueGame.sol";
 /// @author Trader Joe
 /// @title Apothecary
 /// @notice Contract for alive plague doctors to attempt to brew a potion at each epoch
-contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 {
+contract Apothecary is IApothecary, Ownable, VRFConsumerBaseV2 {
     /// @notice Timestamp for Apothecary to allow plague doctors brew potions
     uint256 private startTime;
     /// @notice Probability for a doctor to receive a potion when he tries to brew one.
@@ -22,7 +21,7 @@ contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 
     /// @notice Total number of all plague doctors brew attempts
     uint256 private totalBrewsCount;
     /// @notice Duration of each epoch
-    uint256 public constant EPOCH_DURATION = 6 hours;
+    uint256 public constant EPOCH_DURATION = 12 hours;
     /// @notice Number of latest brew logs to keep track of
     uint256 public RECENT_BREW_LOGS_COUNT = 10;
     /// @notice Token ID of the plague doctor that called the VRF for the current epoch
@@ -41,6 +40,10 @@ contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 
     BrewLog[] public allBrewLogs;
     /// @notice Track brew logs of plague doctors
     mapping(uint256 => BrewLog[]) private doctorBrewLogs;
+
+    /// @dev Potions owner by the contract
+    uint256[] private potionsOwnedByContract;
+
     /// @notice Keep track if plague doctor has tried to brew in an epoch
     /// @dev Mapping from an epoch timestamp to plague doctor ID to tried state
     mapping(uint256 => mapping(uint256 => bool)) private triedBrewInEpoch;
@@ -48,7 +51,6 @@ contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 
     mapping(uint256 => uint256) private epochVRFNumber;
     /// @notice epoch start timestamp to VRF request id
     mapping(uint256 => uint256) private epochRequestId;
-
     /// @dev Address of VRF coordinator
     VRFCoordinatorV2Interface private immutable vrfCoordinator;
     /// @dev VRF subscription ID
@@ -278,19 +280,6 @@ contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 
         }
     }
 
-    /// @notice Function is called when Apothecary contract receives an ERC721 token
-    /// @notice via `safeTransferFrom`
-    /// @dev See OpenZeppelin {IERC721Receiver-onERC721Received}
-    /// @return selector The selector of the function
-    function onERC721Received(address, address, uint256, bytes calldata)
-        external
-        pure
-        override
-        returns (bytes4 selector)
-    {
-        selector = IERC721Receiver.onERC721Received.selector;
-    }
-
     /**
      * Owner Functions *
      */
@@ -324,7 +313,8 @@ contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 
     /// @param _potionIds Potion IDs to be transferred from owner to Apothecary contract
     function addPotions(uint256[] memory _potionIds) external override onlyOwner {
         for (uint256 i = 0; i < _potionIds.length;) {
-            potions.safeTransferFrom(msg.sender, address(this), _potionIds[i]);
+            potions.transferFrom(msg.sender, address(this), _potionIds[i]);
+            potionsOwnedByContract.push(_potionIds[i]);
 
             unchecked {
                 ++i;
@@ -335,16 +325,20 @@ contract Apothecary is IApothecary, IERC721Receiver, Ownable, VRFConsumerBaseV2 
 
     /// @notice Transfers potions from Apothecary contract to owner
     /// @dev Potion IDs should be owned by Apothecary contract
-    /// @param _potionIds Potion IDs to be transferred from Apothecary contract to owner
-    function removePotions(uint256[] memory _potionIds) external override onlyOwner {
-        for (uint256 i = 0; i < _potionIds.length;) {
-            potions.safeTransferFrom(address(this), msg.sender, _potionIds[i]);
+    /// @param _amount Number of potions to be transferred from Apothecary contract to owner
+    function removePotions(uint256 _amount) external override onlyOwner {
+        uint256 potionsOwnedByContractLength = potionsOwnedByContract.length;
+
+        for (uint256 i = 0; i < _amount;) {
+            potions.transferFrom(address(this), msg.sender, potionsOwnedByContract[potionsOwnedByContractLength - 1]);
+            potionsOwnedByContract.pop();
 
             unchecked {
+                --potionsOwnedByContractLength;
                 ++i;
             }
         }
-        emit PotionsRemoved(_potionIds);
+        emit PotionsRemoved(_amount);
     }
 
     /**
