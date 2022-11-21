@@ -153,32 +153,29 @@ contract ApothecaryTest is PlagueGameTest {
 
         uint256 offsetIndex =
             doctorBrewResults.length > RECENT_BREW_LOGS_COUNT ? doctorBrewResults.length - RECENT_BREW_LOGS_COUNT : 0;
-        uint256 allLogsCount = doctorBrewResults.length;
+        uint256 allLogsCount =
+            doctorBrewResults.length > RECENT_BREW_LOGS_COUNT ? RECENT_BREW_LOGS_COUNT : doctorBrewResults.length;
 
-        for (uint256 i = 0; i < allLogsCount;) {
-            if (i == RECENT_BREW_LOGS_COUNT) {
+        for (uint256 i = 0; i < allLogsCount; ++i) {
+            if (i == RECENT_BREW_LOGS_COUNT || i == allLogsCount) {
                 break;
             }
 
             assertEq(
                 apothecary.getlatestBrewLogs()[i].timestamp,
-                doctorBrewResults[offsetIndex + i].timestamp,
+                doctorBrewResults[offsetIndex + allLogsCount - i - 1].timestamp,
                 "Timestamp for recent brew should be orderly tracked"
             );
             assertEq(
                 apothecary.getlatestBrewLogs()[i].doctorId,
-                doctorBrewResults[offsetIndex + i].doctorId,
+                doctorBrewResults[offsetIndex + allLogsCount - i - 1].doctorId,
                 "Doctor ID for recent brew should be orderly tracked"
             );
             assertEq(
                 apothecary.getlatestBrewLogs()[i].brewPotion,
-                doctorBrewResults[offsetIndex + i].brewPotion,
+                doctorBrewResults[offsetIndex + allLogsCount - i - 1].brewPotion,
                 "Success for recent brew should be orderly tracked"
             );
-
-            unchecked {
-                ++i;
-            }
         }
     }
 

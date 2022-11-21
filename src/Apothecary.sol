@@ -156,17 +156,13 @@ contract Apothecary is IApothecary, Ownable, VRFConsumerBaseV2 {
 
     /// @notice Returns the latest brew logs
     /// @return lastBrewLogs Latest brew logs
-    function getlatestBrewLogs() external view override returns (BrewLog[RECENT_BREW_LOGS_COUNT] memory lastBrewLogs) {
-        uint256 offsetIndex =
-            allBrewLogs.length > RECENT_BREW_LOGS_COUNT ? allBrewLogs.length - RECENT_BREW_LOGS_COUNT : 0;
+    function getlatestBrewLogs() external view override returns (BrewLog[] memory lastBrewLogs) {
         uint256 allLogsCount = allBrewLogs.length;
+        uint256 length = allLogsCount > RECENT_BREW_LOGS_COUNT ? RECENT_BREW_LOGS_COUNT : allLogsCount;
+        lastBrewLogs = new BrewLog[](length);
 
-        for (uint256 i = 0; i < allLogsCount; ++i) {
-            if (i == RECENT_BREW_LOGS_COUNT) {
-                break;
-            }
-
-            lastBrewLogs[i] = allBrewLogs[offsetIndex + i];
+        for (uint256 i = 0; i < length; ++i) {
+            lastBrewLogs[i] = allBrewLogs[allLogsCount - i - 1];
         }
     }
 
