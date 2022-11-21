@@ -327,14 +327,10 @@ contract Apothecary is IApothecary, Ownable, VRFConsumerBaseV2 {
     /// @dev Potion IDs should be owned by Apothecary contract
     /// @param _amount Number of potions to be transferred from Apothecary contract to owner
     function removePotions(uint256 _amount) external override onlyOwner {
-        uint256 potionsOwnedByContractLength = potionsOwnedByContract.length;
-
         for (uint256 i = 0; i < _amount;) {
-            potions.transferFrom(address(this), msg.sender, potionsOwnedByContract[potionsOwnedByContractLength - 1]);
-            potionsOwnedByContract.pop();
+            potions.transferFrom(address(this), msg.sender, _getPotionId());
 
             unchecked {
-                --potionsOwnedByContractLength;
                 ++i;
             }
         }
@@ -421,11 +417,12 @@ contract Apothecary is IApothecary, Ownable, VRFConsumerBaseV2 {
     /// @notice Returns first token ID of potions owned by Apothecary contract
     /// @dev Reverts if no potions is owned by Apothecary contract
     /// @return potionId First potion ID owned by Apothecary contract
-    function _getPotionId() private view returns (uint256 potionId) {
+    function _getPotionId() private returns (uint256 potionId) {
         if (_getPotionsLeft() == 0) {
             revert PotionsNotEnough(0);
         }
-        potionId = potions.tokenOfOwnerByIndex(address(this), 0);
+        potionId = potionsOwnedByContract[potionsOwnedByContract.length - 1];
+        potionsOwnedByContract.pop();
     }
 
     /// @notice Returns the total number of brew attempts from a plague doctor
