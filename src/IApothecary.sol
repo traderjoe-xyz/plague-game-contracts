@@ -9,7 +9,7 @@ interface ILaunchpeg is IERC721Enumerable {
 }
 
 interface IApothecary {
-    event SentPotion(uint256 indexed doctorId, uint256 indexed potionId);
+    event SentPotion(uint256 indexed doctorId);
 
     event PotionsAdded(uint256[] potions);
 
@@ -49,7 +49,10 @@ interface IApothecary {
 
     function latestEpochTimestamp() external view returns (uint256 latestEpoch);
 
-    function getTriedInEpoch(uint256 _epochTimestamp, uint256 _doctorId) external view returns (bool tried);
+    function triedToBrewPotionDuringEpoch(uint256 _epochTimestamp, uint256 _doctorId)
+        external
+        view
+        returns (bool tried);
 
     function setStartTime(uint256 _startTime) external;
 

@@ -376,7 +376,7 @@ contract ApothecaryTest is PlagueGameTest {
         );
     }
 
-    function testGetTriedInEpoch() public {
+    function testTriedToBrewPotionDuringEpoch() public {
         uint256 doctorA = doctors.tokenOfOwnerByIndex(ALICE, 0);
         uint256 doctorB = doctors.tokenOfOwnerByIndex(BOB, 0);
 
@@ -385,12 +385,12 @@ contract ApothecaryTest is PlagueGameTest {
         _mockVRFResponse(address(apothecary));
 
         assertEq(
-            apothecary.getTriedInEpoch(apothecary.latestEpochTimestamp(), doctorA),
+            apothecary.triedToBrewPotionDuringEpoch(apothecary.latestEpochTimestamp(), doctorA),
             true,
             "It should show that doctorA attempted brew in current epoch"
         );
         assertEq(
-            apothecary.getTriedInEpoch(apothecary.latestEpochTimestamp(), doctorB),
+            apothecary.triedToBrewPotionDuringEpoch(apothecary.latestEpochTimestamp(), doctorB),
             false,
             "It should show that doctorB did not attempt brew in current epoch"
         );
@@ -402,12 +402,12 @@ contract ApothecaryTest is PlagueGameTest {
         _mockVRFResponse(address(apothecary));
 
         assertEq(
-            apothecary.getTriedInEpoch(apothecary.latestEpochTimestamp(), doctorA),
+            apothecary.triedToBrewPotionDuringEpoch(apothecary.latestEpochTimestamp(), doctorA),
             false,
             "It should show that doctorA did not attempt brew in current epoch"
         );
         assertEq(
-            apothecary.getTriedInEpoch(apothecary.latestEpochTimestamp(), doctorB),
+            apothecary.triedToBrewPotionDuringEpoch(apothecary.latestEpochTimestamp(), doctorB),
             true,
             "It should show that doctorB attempted brew in current epoch"
         );
@@ -502,7 +502,7 @@ contract ApothecaryTest is PlagueGameTest {
         _mockVRFResponse(address(apothecary));
 
         assertEq(
-            apothecary.getTriedInEpoch(apothecary.latestEpochTimestamp(), doctorId),
+            apothecary.triedToBrewPotionDuringEpoch(apothecary.latestEpochTimestamp(), doctorId),
             true,
             "Should prove that doctor Id has attempted brew in current epoch"
         );
@@ -541,6 +541,31 @@ contract ApothecaryTest is PlagueGameTest {
         vm.expectRevert(abi.encodeWithSelector(VrfRequestPending.selector, s_nextRequestId));
         vm.prank(BOB);
         apothecary.makePotion(doctorB);
+    }
+
+    function testVRFCallEndOfEpoch() public {
+        vm.warp(brewStartTime + apothecary.EPOCH_DURATION() - 2);
+        uint256 doctorId = doctors.tokenOfOwnerByIndex(ALICE, 0);
+
+        vm.prank(ALICE);
+        apothecary.makePotion(doctorId);
+
+        // VRF response is late
+        skip(1 minutes);
+
+        _mockVRFResponse(address(apothecary));
+
+        assertEq(
+            apothecary.getVRFForEpoch(brewStartTime + apothecary.EPOCH_DURATION() - 2),
+            0,
+            "VRF callback should have failed"
+        );
+
+        vm.prank(ALICE);
+        apothecary.makePotion(doctorId);
+
+        _mockVRFResponse(address(apothecary));
+        assertGt(apothecary.getVRFForEpoch(block.timestamp), 0, "Next VRF call should work");
     }
 
     /**

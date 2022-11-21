@@ -178,11 +178,12 @@ contract Apothecary is IApothecary, Ownable, VRFConsumerBaseV2 {
 
         uint256 j = totalDoctorBrews;
         for (uint256 i = checkedLength; i > 0;) {
-            lastNBrewLogs[i - 1] = _doctorBrewLogs[_doctorId][j - 1];
             unchecked {
                 --i;
                 --j;
             }
+
+            lastNBrewLogs[i] = _doctorBrewLogs[_doctorId][j];
         }
 
         return lastNBrewLogs;
@@ -216,7 +217,12 @@ contract Apothecary is IApothecary, Ownable, VRFConsumerBaseV2 {
     /// @param _epochTimestamp Timestamp of epoch
     /// @param _doctorId Token ID of plague doctor
     /// @return tried Boolean showing plague doctor brew attempt in epoch
-    function getTriedInEpoch(uint256 _epochTimestamp, uint256 _doctorId) external view override returns (bool tried) {
+    function triedToBrewPotionDuringEpoch(uint256 _epochTimestamp, uint256 _doctorId)
+        external
+        view
+        override
+        returns (bool tried)
+    {
         tried = _triedBrewInEpoch[_getEpochStart(_epochTimestamp)][_doctorId];
     }
 
@@ -303,7 +309,7 @@ contract Apothecary is IApothecary, Ownable, VRFConsumerBaseV2 {
     /// @param _amount Number of potions to be transferred from Apothecary contract to owner
     function removePotions(uint256 _amount) external override onlyOwner {
         for (uint256 i = 0; i < _amount; ++i) {
-            potions.transferFrom(address(this), msg.sender, _getPotionId());
+            _sendPotion(msg.sender);
         }
         emit PotionsRemoved(_amount);
     }
@@ -347,11 +353,11 @@ contract Apothecary is IApothecary, Ownable, VRFConsumerBaseV2 {
             }
 
             brewLog.brewPotion = true;
-            uint256 potionId = _getPotionId();
             ++totalPotionsMinted;
-            potions.safeTransferFrom(address(this), doctors.ownerOf(_doctorId), potionId);
 
-            emit SentPotion(_doctorId, potionId);
+            _sendPotion(doctors.ownerOf(_doctorId));
+
+            emit SentPotion(_doctorId);
         } else {
             brewLog.brewPotion = false;
         }
@@ -360,6 +366,15 @@ contract Apothecary is IApothecary, Ownable, VRFConsumerBaseV2 {
         brewLog.timestamp = block.timestamp;
         _doctorBrewLogs[_doctorId].push(brewLog);
         allBrewLogs.push(brewLog);
+    }
+
+    /// @dev Sends a potion to the designated recipient
+    /// @param _recipient Address of the recipient
+    function _sendPotion(address _recipient) private {
+        uint256 potionId = _getPotionId();
+        potions.safeTransferFrom(address(this), _recipient, potionId);
+
+        _potionsOwnedByContract.pop();
     }
 
     /// @notice Returns period start of epoch timestamp
@@ -379,12 +394,11 @@ contract Apothecary is IApothecary, Ownable, VRFConsumerBaseV2 {
     /// @notice Returns first token ID of potions owned by Apothecary contract
     /// @dev Reverts if no potions is owned by Apothecary contract
     /// @return potionId First potion ID owned by Apothecary contract
-    function _getPotionId() private returns (uint256 potionId) {
+    function _getPotionId() private view returns (uint256 potionId) {
         if (_getPotionsLeft() == 0) {
             revert PotionsNotEnough(0);
         }
         potionId = _potionsOwnedByContract[_potionsOwnedByContract.length - 1];
-        _potionsOwnedByContract.pop();
     }
 
     /// @notice Returns the total number of brew attempts from a plague doctor
