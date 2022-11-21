@@ -33,7 +33,7 @@ interface IApothecary {
 
     function getTotalBrewsCount(uint256 _doctorId) external view returns (uint256 doctorBrewsCount);
 
-    function getlatestBrewLogs() external view returns (BrewLog[10] memory lastTenBrewLogs);
+    function getlatestBrewLogs() external view returns (BrewLog[100] memory lastTenBrewLogs);
 
     function getBrewLogs(uint256 _doctorId, uint256 _count) external view returns (BrewLog[] memory latestBrewLogs);
 

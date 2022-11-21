@@ -7,6 +7,8 @@ import "chainlink/interfaces/VRFCoordinatorV2Interface.sol";
 import "./IApothecary.sol";
 import "./IPlagueGame.sol";
 
+import "forge-std/console.sol";
+
 /// @author Trader Joe
 /// @title Apothecary
 /// @notice Contract for alive plague doctors to attempt to brew a potion at each epoch
@@ -23,7 +25,7 @@ contract Apothecary is IApothecary, Ownable, VRFConsumerBaseV2 {
     /// @notice Duration of each epoch
     uint256 public constant EPOCH_DURATION = 12 hours;
     /// @notice Number of latest brew logs to keep track of
-    uint256 public RECENT_BREW_LOGS_COUNT = 10;
+    uint256 public constant RECENT_BREW_LOGS_COUNT = 100;
     /// @notice Token ID of the plague doctor that called the VRF for the current epoch
     /// @dev Cache the ID of the plague doctor that called the VRF.
     /// @dev It avoids calling the VRF multiple times
@@ -62,7 +64,7 @@ contract Apothecary is IApothecary, Ownable, VRFConsumerBaseV2 {
     /// @dev Max gas used on the VRF callback
     uint32 private immutable maxGas;
     /// @dev Number of uint256 random values to receive in VRF callback
-    uint32 private constant RANDOM_NUMBERS_COUNT = 1;
+    uint32 private constant RANDOM_NUMBERS_AMOUNT = 1;
     /// @dev Number of blocks confirmations for oracle to respond to VRF request
     uint16 private constant VRF_BLOCK_CONFIRMATIONS = 3;
 
@@ -82,7 +84,7 @@ contract Apothecary is IApothecary, Ownable, VRFConsumerBaseV2 {
     /// @notice Verify that plague doctor has not attempted to brew potion in latest epoch
     /// @param _doctorId Token ID of plague doctor
     modifier hasNotBrewedInLatestEpoch(uint256 _doctorId) {
-        if (triedBrewInEpoch[_getEpochStart(uint256(block.timestamp))][_doctorId]) {
+        if (triedBrewInEpoch[_getEpochStart(block.timestamp)][_doctorId]) {
             revert DoctorHasBrewed(latestEpochTimestamp);
         }
         _;
@@ -164,22 +166,19 @@ contract Apothecary is IApothecary, Ownable, VRFConsumerBaseV2 {
         doctorBrewsCount = _getTotalBrewsCount(_doctorId);
     }
 
-    /// @notice Returns the latest 10 brew logs
-    /// @return lastTenBrewLogs Latest 10 brew logs
-    function getlatestBrewLogs() external view override returns (BrewLog[10] memory lastTenBrewLogs) {
+    /// @notice Returns the latest brew logs
+    /// @return lastBrewLogs Latest brew logs
+    function getlatestBrewLogs() external view override returns (BrewLog[RECENT_BREW_LOGS_COUNT] memory lastBrewLogs) {
         uint256 offsetIndex =
             allBrewLogs.length > RECENT_BREW_LOGS_COUNT ? allBrewLogs.length - RECENT_BREW_LOGS_COUNT : 0;
         uint256 allLogsCount = allBrewLogs.length;
 
-        for (uint256 i = 0; i < allLogsCount;) {
+        for (uint256 i = 0; i < allLogsCount; ++i) {
             if (i == RECENT_BREW_LOGS_COUNT) {
                 break;
             }
 
-            lastTenBrewLogs[i] = allBrewLogs[offsetIndex + i];
-            unchecked {
-                ++i;
-            }
+            lastBrewLogs[i] = allBrewLogs[offsetIndex + i];
         }
     }
 
@@ -211,7 +210,7 @@ contract Apothecary is IApothecary, Ownable, VRFConsumerBaseV2 {
         if (latestEpochTimestamp == 0 || block.timestamp - latestEpochTimestamp > EPOCH_DURATION) {
             countdown = 0;
         } else {
-            countdown = EPOCH_DURATION + latestEpochTimestamp - uint256(block.timestamp);
+            countdown = EPOCH_DURATION + latestEpochTimestamp - block.timestamp;
         }
     }
 
@@ -266,8 +265,8 @@ contract Apothecary is IApothecary, Ownable, VRFConsumerBaseV2 {
         hasNotBrewedInLatestEpoch(_doctorId)
     {
         if (hasMintedFirstPotion[_doctorId]) {
-            if (_getEpochStart(uint256(block.timestamp)) > latestEpochTimestamp) {
-                uint256 nextEpochTimestampCache = _getEpochStart(uint256(block.timestamp));
+            if (_getEpochStart(block.timestamp) > latestEpochTimestamp) {
+                uint256 nextEpochTimestampCache = _getEpochStart(block.timestamp);
                 uint256 pendingRequestId = epochRequestId[nextEpochTimestampCache];
 
                 if (pendingRequestId != 0) {
@@ -276,17 +275,16 @@ contract Apothecary is IApothecary, Ownable, VRFConsumerBaseV2 {
 
                 plagueDoctorVRFCaller = _doctorId;
                 epochRequestId[nextEpochTimestampCache] = vrfCoordinator.requestRandomWords(
-                    keyHash, subscriptionId, VRF_BLOCK_CONFIRMATIONS, maxGas, RANDOM_NUMBERS_COUNT
+                    keyHash, subscriptionId, VRF_BLOCK_CONFIRMATIONS, maxGas, RANDOM_NUMBERS_AMOUNT
                 );
             } else {
                 _brew(_doctorId);
             }
         } else {
-            uint256 totalSupply = potions.totalSupply();
             potions.devMint(1);
             hasMintedFirstPotion[_doctorId] = true;
 
-            potions.transferFrom(address(this), doctors.ownerOf(_doctorId), totalSupply);
+            potions.transferFrom(address(this), doctors.ownerOf(_doctorId), potions.totalSupply() - 1);
         }
     }
 
@@ -321,14 +319,10 @@ contract Apothecary is IApothecary, Ownable, VRFConsumerBaseV2 {
     /// @notice Transfer potions from owner to Apothecary contract
     /// @dev Potion IDs should be approved before this function is called
     /// @param _potionIds Potion IDs to be transferred from owner to Apothecary contract
-    function addPotions(uint256[] memory _potionIds) external override onlyOwner {
-        for (uint256 i = 0; i < _potionIds.length;) {
+    function addPotions(uint256[] calldata _potionIds) external override onlyOwner {
+        for (uint256 i = 0; i < _potionIds.length; ++i) {
             potions.transferFrom(msg.sender, address(this), _potionIds[i]);
             potionsOwnedByContract.push(_potionIds[i]);
-
-            unchecked {
-                ++i;
-            }
         }
         emit PotionsAdded(_potionIds);
     }
@@ -337,12 +331,8 @@ contract Apothecary is IApothecary, Ownable, VRFConsumerBaseV2 {
     /// @dev Potion IDs should be owned by Apothecary contract
     /// @param _amount Number of potions to be transferred from Apothecary contract to owner
     function removePotions(uint256 _amount) external override onlyOwner {
-        for (uint256 i = 0; i < _amount;) {
+        for (uint256 i = 0; i < _amount; ++i) {
             potions.transferFrom(address(this), msg.sender, _getPotionId());
-
-            unchecked {
-                ++i;
-            }
         }
         emit PotionsRemoved(_amount);
     }
@@ -355,7 +345,7 @@ contract Apothecary is IApothecary, Ownable, VRFConsumerBaseV2 {
     /// @dev See Chainlink {VRFConsumerBaseV2-fulfillRandomWords}
     /// @param _randomWords Random numbers provided by VRF
     function fulfillRandomWords(uint256 _requestId, uint256[] memory _randomWords) internal override {
-        latestEpochTimestamp = _getEpochStart(uint256(block.timestamp));
+        latestEpochTimestamp = _getEpochStart(block.timestamp);
 
         if (epochRequestId[latestEpochTimestamp] != _requestId) {
             revert InvalidVrfRequestId();
@@ -395,7 +385,7 @@ contract Apothecary is IApothecary, Ownable, VRFConsumerBaseV2 {
         }
 
         brewLog.doctorId = _doctorId;
-        brewLog.timestamp = uint256(block.timestamp);
+        brewLog.timestamp = block.timestamp;
         doctorBrewLogs[_doctorId].push(brewLog);
         allBrewLogs.push(brewLog);
     }
@@ -404,18 +394,8 @@ contract Apothecary is IApothecary, Ownable, VRFConsumerBaseV2 {
     /// @param _epochTimestamp Timestamp of epoch
     /// @return epochStart Start timestamp of epoch
     function _getEpochStart(uint256 _epochTimestamp) private view returns (uint256 epochStart) {
-        if (_epochTimestamp < EPOCH_DURATION) {
-            epochStart = _epochTimestamp;
-        } else {
-            uint256 elapsedEpochs;
-            if (_epochTimestamp >= latestEpochTimestamp) {
-                elapsedEpochs = (_epochTimestamp - latestEpochTimestamp) / EPOCH_DURATION;
-                epochStart = latestEpochTimestamp + (uint256(elapsedEpochs) * EPOCH_DURATION);
-            } else {
-                elapsedEpochs = (latestEpochTimestamp - _epochTimestamp) / EPOCH_DURATION;
-                epochStart = latestEpochTimestamp - (uint256(elapsedEpochs) * EPOCH_DURATION);
-            }
-        }
+        uint256 startTimeCached = startTime;
+        epochStart = startTimeCached + ((_epochTimestamp - startTimeCached) / EPOCH_DURATION) * EPOCH_DURATION;
     }
 
     /// @notice Returns number of potions owned by Apothecary contract

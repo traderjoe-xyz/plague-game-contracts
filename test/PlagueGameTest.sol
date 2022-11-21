@@ -28,7 +28,7 @@ contract PlagueGameTest is Test {
     // VRF configuration
     uint64 subscriptionId;
     bytes32 keyHash = "";
-    uint32 maxGas = 1_800_000;
+    uint32 maxGas = 600_000;
     uint256 s_nextRequestId = 1;
     uint96 lastSubscriptionBalance = 100 ether;
 

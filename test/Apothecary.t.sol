@@ -110,7 +110,7 @@ contract ApothecaryTest is PlagueGameTest {
     }
 
     function testGetlatestBrewLogs() public {
-        // make sure the last 10 brews are in contract
+        // make sure the last 100 brews are in contract
 
         apothecary.setDifficulty(2);
 
@@ -509,6 +509,7 @@ contract ApothecaryTest is PlagueGameTest {
 
         vm.prank(ALICE);
         apothecary.makePotion(doctorId);
+
         _mockVRFResponse(address(apothecary));
 
         assertEq(
