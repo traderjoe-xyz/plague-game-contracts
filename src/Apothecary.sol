@@ -230,12 +230,26 @@ contract Apothecary is IApothecary, Ownable, VRFConsumerBaseV2 {
      * External Functions *
      */
 
+    /// @notice Calls makePotion() for an array of plague doctors
+    /// @dev It is not possible to call this function if this is the first makePotion call of the epoch,
+    ///      as the second makePotion call would revert due to the VRF callback not being received yet.
+    /// @param _doctorIds Array of doctor token IDs
+    function makePotions(uint256[] calldata _doctorIds) external override {
+        if (_getEpochStart(block.timestamp) > latestEpochTimestamp) {
+            revert BrewNotStarted();
+        }
+
+        for (uint256 i = 0; i < _doctorIds.length; ++i) {
+            makePotion(_doctorIds[i]);
+        }
+    }
+
     /// @notice Give random chance to receive a potion at a probability of (1 / difficulty)
     /// @dev Plague doctor must be alive
     /// @dev Plague doctor should have not attempted brew in latest epoch
     /// @param _doctorId Token ID of plague doctor
     function makePotion(uint256 _doctorId)
-        external
+        public
         override
         brewHasStarted
         doctorIsAlive(_doctorId)

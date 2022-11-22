@@ -568,6 +568,33 @@ contract ApothecaryTest is PlagueGameTest {
         assertGt(apothecary.getVRFForEpoch(block.timestamp), 0, "Next VRF call should work");
     }
 
+    function testBatchMakePotions() public {
+        uint256 batchClaimAmount = 5;
+        uint256[] memory doctorIds = new uint256[](batchClaimAmount);
+        for (uint256 i = 0; i < batchClaimAmount; i++) {
+            doctorIds[i] = doctors.tokenOfOwnerByIndex(ALICE, i);
+        }
+
+        // Can't batch makePotion() if it's the first call of the epoch
+        vm.expectRevert(BrewNotStarted.selector);
+        apothecary.makePotions(doctorIds);
+
+        vm.prank(BOB);
+        apothecary.makePotion(doctors.tokenOfOwnerByIndex(BOB, 0));
+        _mockVRFResponse(address(apothecary));
+
+        vm.prank(ALICE);
+        apothecary.makePotions(doctorIds);
+
+        for (uint256 i = 0; i < batchClaimAmount; i++) {
+            assertEq(
+                apothecary.triedToBrewPotionDuringEpoch(apothecary.latestEpochTimestamp(), doctorIds[i]),
+                true,
+                "Should prove that doctor Id has attempted brew in current epoch"
+            );
+        }
+    }
+
     /**
      * Helper Functions *
      */

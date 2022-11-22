@@ -58,9 +58,11 @@ interface IApothecary {
 
     function setDifficulty(uint256 _difficulty) external;
 
-    function addPotions(uint256[] memory _potionIds) external;
+    function addPotions(uint256[] calldata _potionIds) external;
 
     function removePotions(uint256 amount) external;
+
+    function makePotions(uint256[] calldata _doctorIds) external;
 
     function makePotion(uint256 _doctorId) external;
 }
