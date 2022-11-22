@@ -47,8 +47,6 @@ interface IApothecary {
 
     function difficulty() external view returns (uint256 winDifficulty);
 
-    function latestEpochTimestamp() external view returns (uint256 latestEpoch);
-
     function triedToBrewPotionDuringEpoch(uint256 _epochTimestamp, uint256 _doctorId)
         external
         view
@@ -65,4 +63,6 @@ interface IApothecary {
     function makePotions(uint256[] calldata _doctorIds) external;
 
     function makePotion(uint256 _doctorId) external;
+
+    function requestVRFforCurrentEpoch() external;
 }
