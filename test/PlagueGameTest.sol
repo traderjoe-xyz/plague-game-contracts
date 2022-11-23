@@ -20,6 +20,7 @@ contract PlagueGameTest is Test {
         [2_000, 2_000, 2_000, 3_000, 3_000, 3_000, 4_000, 4_000, 4_000, 5_000, 5_000, 5_000];
     uint256 epochDuration = 1 days;
     uint256 prizePot = 100 ether;
+    uint256 gameStartTime = block.timestamp + 24 hours;
 
     // Test configuration
     uint256[] curedDoctorsPerEpoch = [1200, 1100, 1000, 900, 500, 400, 300, 200, 150, 100, 50, 20, 0, 0, 0, 0, 0, 0];
@@ -57,7 +58,6 @@ contract PlagueGameTest is Test {
         coordinator.fundSubscription(subscriptionId, lastSubscriptionBalance);
 
         _gameSetup();
-        _initializeGame();
     }
 
     function _initializeGame() internal {
@@ -71,14 +71,14 @@ contract PlagueGameTest is Test {
         vm.expectRevert(GameNotStarted.selector);
         plagueGame.startGame();
 
-        skip(300);
+        vm.warp(gameStartTime);
     }
 
     function _gameSetup() internal {
         plagueGame = new PlagueGame(
             doctors,
             potions,
-            block.timestamp + 120,
+            gameStartTime,
             playerNumberToEndGame,
             infectionPercentagePerEpoch,
             epochDuration,

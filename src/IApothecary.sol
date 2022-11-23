@@ -45,7 +45,7 @@ interface IApothecary {
 
     function getVRFForEpoch(uint256 _epochTimestamp) external view returns (uint256 epochVRF);
 
-    function difficulty() external view returns (uint256 winDifficulty);
+    function difficultyPerEpoch(uint256 _epochIndex) external view returns (uint256 winDifficulty);
 
     function triedToBrewPotionDuringEpoch(uint256 _epochTimestamp, uint256 _doctorId)
         external
@@ -54,7 +54,7 @@ interface IApothecary {
 
     function setStartTime(uint256 _startTime) external;
 
-    function setDifficulty(uint256 _difficulty) external;
+    function setDifficulty(uint256[] calldata _difficultyPerEpoch) external;
 
     function addPotions(uint256[] calldata _potionIds) external;
 

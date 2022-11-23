@@ -14,7 +14,7 @@ contract DeployScript is Script {
     uint256 playerNumberToEndGame = 10;
     uint256[] infectedDoctorsPerEpoch =
         [2_000, 2_000, 2_000, 3_000, 3_000, 3_000, 4_000, 4_000, 4_000, 5_000, 5_000, 5_000];
-    uint256 difficulty = 2_500;
+    uint256[] difficultyPerEpoch = [0, 50, 50, 58, 58, 67, 67, 100, 100, 134, 134, 200, 200, 400, 400];
 
     // Fuji
     ERC721Mock doctors = ERC721Mock(0x4f34ef87836d2241c4D4f2cBB36574754Cf1aa50);
@@ -69,7 +69,7 @@ contract DeployScript is Script {
         }
 
         Apothecary apothecary =
-        new Apothecary(plagueGame, potions, doctors, difficulty, block.timestamp + 120, coordinator, subscriptionId, keyHash, maxGas);
+        new Apothecary(plagueGame, potions, doctors, block.timestamp + 120, difficultyPerEpoch,  coordinator, subscriptionId, keyHash, maxGas);
 
         if (block.chainid != 43114) {
             coordinator.addConsumer(subscriptionId, address(apothecary));

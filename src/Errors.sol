@@ -2,7 +2,7 @@
 pragma solidity ^0.8.13;
 
 error DoctorIsDead();
-error DoctorHasBrewed(uint256 epochTimestamp);
+error DoctorHasAlreadyBrewed();
 error PotionsNotEnough(uint256 potionsLeft);
 error InvalidDifficulty();
 error VrfResponseNotReceived();
@@ -11,6 +11,14 @@ error InvalidVrfRequestId();
 error InvalidStartTime();
 error BrewNotStarted();
 error BrewHasStarted();
+error DoctorAlreadyClaimed();
+error ClaimNotStarted();
+error InvalidDoctorIdsLength();
+error GameEnded();
+error DoctorNotOwnedBySender();
+error DoctorNotDead();
+error DoctorAlreadyBrewed();
+error NoPotionLeft();
 
 error InvalidPlayerNumberToEndGame();
 error InvalidInfectionPercentage();
