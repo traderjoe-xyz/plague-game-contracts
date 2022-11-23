@@ -222,8 +222,6 @@ contract Apothecary is IApothecary, Ownable, VRFConsumerBaseV2 {
      */
 
     /// @notice Calls _makePotion() for an array of plague doctors
-    /// @dev It is not possible to call this function if this is the first makePotion call of the epoch,
-    ///      as the second makePotion call would revert due to the VRF callback not being received yet.
     /// @param _doctorIds Array of doctor token IDs
     function makePotions(uint256[] calldata _doctorIds) external override brewHasStarted {
         if (plagueGame.isGameOver()) {
