@@ -24,7 +24,7 @@ contract GameTest is PlagueGameTest {
         _mockVRFResponse();
 
         vm.prank(address(coordinator));
-        vm.expectRevert(VRFRequestAlreadyAsked.selector);
+        vm.expectRevert(VRFAlreadyRequested.selector);
         plagueGame.rawFulfillRandomWords(s_nextRequestId - 1, randomWords);
 
         _computeInfectedDoctors();

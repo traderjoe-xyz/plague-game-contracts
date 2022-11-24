@@ -39,6 +39,9 @@ contract ApothecaryTest is PlagueGameTest {
 
         potions.setApprovalForAll(address(apothecary), true);
         _addPotions(200);
+
+        vm.prank(ALICE);
+        potions.mint(10);
     }
 
     function testClaimPotion() public {
@@ -78,7 +81,7 @@ contract ApothecaryTest is PlagueGameTest {
         apothecary.requestVRFforCurrentEpoch();
 
         // Can't try if the VRF response hasn't been received
-        vm.expectRevert(VrfResponseNotReceived.selector);
+        vm.expectRevert(VRFResponseMissing.selector);
         apothecary.makePotions(doctorIds);
 
         _mockVRFResponse(address(apothecary));
@@ -89,10 +92,17 @@ contract ApothecaryTest is PlagueGameTest {
 
         _killDoctors(doctorIds);
 
-        // Can't try if the doctors are not yourq
+        // Can't try if the doctors are not yours
         vm.prank(BOB);
         vm.expectRevert(DoctorNotOwnedBySender.selector);
         apothecary.makePotions(doctorIds);
+
+        doctorIds = [0, 0, 2, 3, 4];
+        // Can't claim several times with the same doctor
+        vm.expectRevert(DoctorAlreadyBrewed.selector);
+        apothecary.makePotions(doctorIds);
+
+        doctorIds = [0, 1, 2, 3, 4];
 
         apothecary.makePotions(doctorIds);
 
@@ -137,6 +147,7 @@ contract ApothecaryTest is PlagueGameTest {
         _skipGameEpoch();
         apothecary.requestVRFforCurrentEpoch();
 
+        // Someone can get some extra lucky and receive 2 potions
         currentDifficulty = apothecary.getDifficulty(plagueGame.currentEpoch());
         while (
             uint256(keccak256(abi.encode(randomNumber, doctorIds[0]))) % (currentDifficulty * 5) != 0
@@ -176,7 +187,7 @@ contract ApothecaryTest is PlagueGameTest {
         vm.warp(apothecary.claimStartTime() + 1);
 
         // Can't update if the claim has already started
-        vm.expectRevert(BrewHasStarted.selector);
+        vm.expectRevert(ClaimHasStarted.selector);
         apothecary.setClaimStartTime(block.timestamp + 1 days);
     }
 

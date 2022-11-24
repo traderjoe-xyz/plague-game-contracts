@@ -579,7 +579,7 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
         uint256 nextEpochCached = currentEpoch + 1;
         // Extra safety check, but that shouldn't happen
         if (_epochVRFNumber[_epochVRFRequest[nextEpochCached]] != 0) {
-            revert VRFRequestAlreadyAsked();
+            revert VRFAlreadyRequested();
         }
 
         _epochVRFRequest[nextEpochCached] = _vrfCoordinator.requestRandomWords(_keyHash, _subscriptionId, 3, _maxGas, 1);
@@ -597,7 +597,7 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
         }
 
         if (_epochVRFNumber[epochVRFRequestCached] != 0) {
-            revert VRFRequestAlreadyAsked();
+            revert VRFAlreadyRequested();
         }
 
         _epochVRFNumber[_requestId] = _randomWords[0];
