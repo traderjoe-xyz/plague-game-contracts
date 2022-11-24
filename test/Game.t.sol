@@ -12,7 +12,9 @@ import "chainlink/mocks/VRFCoordinatorV2Mock.sol";
 contract GameTest is PlagueGameTest {
     function setUp() public override {
         super.setUp();
+
         potions.mint(collectionSize);
+        _initializeGame();
     }
 
     function testVRFSafeGuards() public {
@@ -60,6 +62,8 @@ contract GameTest is PlagueGameTest {
 
         vm.expectRevert(GameNotOver.selector);
         plagueGame.allowPrizeWithdraw(true);
+
+        skip(300);
 
         testFullGame(0);
 

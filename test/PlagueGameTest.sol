@@ -60,20 +60,6 @@ contract PlagueGameTest is Test {
         _gameSetup();
     }
 
-    function _initializeGame() internal {
-        plagueGame.initializeGame(200);
-        plagueGame.initializeGame(200);
-        plagueGame.initializeGame(225);
-
-        vm.expectRevert(TooManyInitialized.selector);
-        plagueGame.initializeGame(1);
-
-        vm.expectRevert(GameNotStarted.selector);
-        plagueGame.startGame();
-
-        vm.warp(gameStartTime);
-    }
-
     function _gameSetup() internal {
         plagueGame = new PlagueGame(
             doctors,
@@ -90,6 +76,20 @@ contract PlagueGameTest is Test {
         coordinator.addConsumer(subscriptionId, address(plagueGame));
         (bool success,) = payable(plagueGame).call{value: prizePot}("");
         assert(success);
+    }
+
+    function _initializeGame() internal {
+        plagueGame.initializeGame(200);
+        plagueGame.initializeGame(200);
+        plagueGame.initializeGame(225);
+
+        vm.expectRevert(TooManyInitialized.selector);
+        plagueGame.initializeGame(1);
+
+        vm.expectRevert(GameNotStarted.selector);
+        plagueGame.startGame();
+
+        vm.warp(gameStartTime);
     }
 
     function _checkVRFCost() internal {
