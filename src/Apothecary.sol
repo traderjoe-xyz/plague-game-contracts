@@ -182,83 +182,20 @@ contract Apothecary is IApothecary, Ownable, VRFConsumerBaseV2 {
         ++totalBrewsCount;
     }
 
-    /**
-     * Private and Internal Functions *
-     */
-
-    /// @notice Compute random chance for a plague doctor to win a free potion
-    /// @dev doctor is alive and has not brewed in current epoch
-    /// @param _doctorID Token ID of the plague doctor
-    function _tryBrew(uint256 _doctorID, uint256 _currentEpoch, uint256 _randomNumber) private {
-        BrewLog memory brewLog;
-        brewLog.doctorID = _doctorID;
-        brewLog.timestamp = block.timestamp;
-
-        triedBrewInEpoch[_currentEpoch][_doctorID] = true;
-
-        uint256 randomNumber = uint256(keccak256(abi.encode(_randomNumber, _doctorID)));
-
-        // Difficulty is considered by batches of 5 doctors
-        // So we multiply the difficulty by 5 to get the difficulty of a single doctor
-        if (randomNumber % (getDifficulty(_currentEpoch) * AMOUNT_OF_DEAD_DOCTORS_TO_BREW) == 0) {
-            brewLog.brewPotion = true;
-            ++totalPotionsBrewed;
-
-            _sendPotion(doctors.ownerOf(_doctorID));
-            emit PotionBrewed(_doctorID);
-        } else {
-            brewLog.brewPotion = false;
-        }
-
-        _doctorBrewLogs[_doctorID].push(brewLog);
-        _allBrewLogs.push(brewLog);
-    }
-
-    /// @notice Callback by VRFConsumerBaseV2 to pass VRF results
-    /// @dev See Chainlink {VRFConsumerBaseV2-fulfillRandomWords}
-    /// @param _requestID Request ID
-    /// @param _randomWords Random numbers provided by VRF
-    function fulfillRandomWords(uint256 _requestID, uint256[] memory _randomWords) internal override {
+    /// @notice Request a random number from VRF for the current epoch
+    function requestVRFforCurrentEpoch() external override {
         uint256 currentEpoch = plagueGame.currentEpoch();
 
-        if (_epochRequestID[currentEpoch] != _requestID) {
-            revert InvalidVrfRequestID();
+        if (_epochRequestID[currentEpoch] != 0) {
+            revert VRFAlreadyRequested();
         }
 
-        _epochVRFNumber[currentEpoch] = _randomWords[0];
+        _epochRequestID[currentEpoch] = _vrfCoordinator.requestRandomWords(_keyHash, _subscriptionId, 3, _maxGas, 1);
     }
 
-    /// @dev Sends a potion to the designated recipient
-    /// @param _recipient Address of the recipient
-    function _sendPotion(address _recipient) private {
-        uint256 potionID = _getPotionID();
-
-        potions.transferFrom(address(this), _recipient, potionID);
-        _potionsOwnedByContract.pop();
-    }
-
-    /// @notice Returns number of potions owned by Apothecary contract
-    /// @return potionsLeft Number of potions owned by contract
-    function _getPotionsLeft() private view returns (uint256 potionsLeft) {
-        potionsLeft = potions.balanceOf(address(this));
-    }
-
-    /// @notice Returns first token ID of potions owned by Apothecary contract
-    /// @dev Reverts if no potions is owned by Apothecary contract
-    /// @return potionID First potion ID owned by Apothecary contract
-    function _getPotionID() private view returns (uint256 potionID) {
-        if (_getPotionsLeft() == 0) {
-            revert NoPotionLeft();
-        }
-        potionID = _potionsOwnedByContract[_potionsOwnedByContract.length - 1];
-    }
-
-    /// @notice Returns the total number of brew attempts from a plague doctor
-    /// @param _doctorID Token ID of plague doctor
-    /// @return doctorBrewsCount Number of brew attempts from plague doctor
-    function _getTotalBrewsCount(uint256 _doctorID) private view returns (uint256 doctorBrewsCount) {
-        doctorBrewsCount = _doctorBrewLogs[_doctorID].length;
-    }
+    /**
+     * View Functions *
+     */
 
     /// @notice Fetches the makePotion() difficulty for the epoch
     /// After reaching the end of the difficulty array, the last value is returned
@@ -275,15 +212,46 @@ contract Apothecary is IApothecary, Ownable, VRFConsumerBaseV2 {
             : _difficultyPerEpoch[_epoch - 1];
     }
 
-    /// @notice Request a random number from VRF for the current epoch
-    function requestVRFforCurrentEpoch() external override {
-        uint256 currentEpoch = plagueGame.currentEpoch();
+    /// @notice Returns the total number of brew attempts from a plague doctor
+    /// @param _doctorID Token ID of plague doctor
+    /// @return doctorBrewsCount Number of brew attempts from plague doctor
+    function getTotalBrewsCountForDoctor(uint256 _doctorID) external view override returns (uint256 doctorBrewsCount) {
+        doctorBrewsCount = _getTotalBrewsCount(_doctorID);
+    }
 
-        if (_epochRequestID[currentEpoch] != 0) {
-            revert VRFAlreadyRequested();
+    /// @notice Returns the latest brew logs
+    /// @return lastBrewLogs Latest brew logs
+    function getLatestBrewLogs() external view override returns (BrewLog[] memory lastBrewLogs) {
+        uint256 allLogsCount = _allBrewLogs.length;
+        uint256 length = allLogsCount > RECENT_BREW_LOGS_COUNT ? RECENT_BREW_LOGS_COUNT : allLogsCount;
+        lastBrewLogs = new BrewLog[](length);
+
+        for (uint256 i = 0; i < length; ++i) {
+            lastBrewLogs[i] = _allBrewLogs[allLogsCount - i - 1];
+        }
+    }
+
+    /// @notice Returns the [n] brew logs of a plague doctor
+    /// @dev Returns [n] number of brew logs if plague doctor has brewed up to [n] times
+    /// @param _doctorID Token ID of plague doctor
+    /// @param _count Number of latest brew logs to return
+    /// @return lastNBrewLogs Last [n] brew logs of plague doctor
+    function getBrewLogs(uint256 _doctorID, uint256 _count) external view override returns (BrewLog[] memory) {
+        uint256 totalDoctorBrews = _getTotalBrewsCount(_doctorID);
+        uint256 checkedLength = _count < totalDoctorBrews ? _count : totalDoctorBrews;
+        BrewLog[] memory lastNBrewLogs = new BrewLog[](checkedLength);
+
+        uint256 j = totalDoctorBrews;
+        for (uint256 i = checkedLength; i > 0;) {
+            unchecked {
+                --i;
+                --j;
+            }
+
+            lastNBrewLogs[i] = _doctorBrewLogs[_doctorID][j];
         }
 
-        _epochRequestID[currentEpoch] = _vrfCoordinator.requestRandomWords(_keyHash, _subscriptionId, 3, _maxGas, 1);
+        return lastNBrewLogs;
     }
 
     /**
@@ -339,48 +307,80 @@ contract Apothecary is IApothecary, Ownable, VRFConsumerBaseV2 {
     }
 
     /**
-     * View Functions *
+     * Private and Internal Functions *
      */
+
+    /// @notice Compute random chance for a plague doctor to win a free potion
+    /// @dev doctor is alive and has not brewed in current epoch
+    /// @param _doctorID Token ID of the plague doctor
+    function _tryBrew(uint256 _doctorID, uint256 _currentEpoch, uint256 _randomNumber) private {
+        BrewLog memory brewLog;
+        brewLog.doctorID = _doctorID;
+        brewLog.timestamp = block.timestamp;
+
+        triedBrewInEpoch[_currentEpoch][_doctorID] = true;
+
+        uint256 randomNumber = uint256(keccak256(abi.encode(_randomNumber, _doctorID)));
+
+        // Difficulty is considered by batches of 5 doctors
+        // So we multiply the difficulty by 5 to get the difficulty of a single doctor
+        if (randomNumber % (getDifficulty(_currentEpoch) * AMOUNT_OF_DEAD_DOCTORS_TO_BREW) == 0) {
+            brewLog.brewPotion = true;
+            ++totalPotionsBrewed;
+
+            _sendPotion(doctors.ownerOf(_doctorID));
+            emit PotionBrewed(_doctorID);
+        } else {
+            brewLog.brewPotion = false;
+        }
+
+        _doctorBrewLogs[_doctorID].push(brewLog);
+        _allBrewLogs.push(brewLog);
+    }
+
+    /// @dev Sends a potion to the designated recipient
+    /// @param _recipient Address of the recipient
+    function _sendPotion(address _recipient) private {
+        uint256 potionID = _getPotionID();
+
+        potions.transferFrom(address(this), _recipient, potionID);
+        _potionsOwnedByContract.pop();
+    }
+
+    /// @notice Returns number of potions owned by Apothecary contract
+    /// @return potionsLeft Number of potions owned by contract
+    function _getPotionsLeft() private view returns (uint256 potionsLeft) {
+        potionsLeft = potions.balanceOf(address(this));
+    }
+
+    /// @notice Returns first token ID of potions owned by Apothecary contract
+    /// @dev Reverts if no potions is owned by Apothecary contract
+    /// @return potionID First potion ID owned by Apothecary contract
+    function _getPotionID() private view returns (uint256 potionID) {
+        if (_getPotionsLeft() == 0) {
+            revert NoPotionLeft();
+        }
+        potionID = _potionsOwnedByContract[_potionsOwnedByContract.length - 1];
+    }
+
+    /// @notice Callback by VRFConsumerBaseV2 to pass VRF results
+    /// @dev See Chainlink {VRFConsumerBaseV2-fulfillRandomWords}
+    /// @param _requestID Request ID
+    /// @param _randomWords Random numbers provided by VRF
+    function fulfillRandomWords(uint256 _requestID, uint256[] memory _randomWords) internal override {
+        uint256 currentEpoch = plagueGame.currentEpoch();
+
+        if (_epochRequestID[currentEpoch] != _requestID) {
+            revert InvalidVrfRequestID();
+        }
+
+        _epochVRFNumber[currentEpoch] = _randomWords[0];
+    }
 
     /// @notice Returns the total number of brew attempts from a plague doctor
     /// @param _doctorID Token ID of plague doctor
     /// @return doctorBrewsCount Number of brew attempts from plague doctor
-    function getTotalBrewsCountForDoctor(uint256 _doctorID) external view override returns (uint256 doctorBrewsCount) {
-        doctorBrewsCount = _getTotalBrewsCount(_doctorID);
-    }
-
-    /// @notice Returns the latest brew logs
-    /// @return lastBrewLogs Latest brew logs
-    function getLatestBrewLogs() external view override returns (BrewLog[] memory lastBrewLogs) {
-        uint256 allLogsCount = _allBrewLogs.length;
-        uint256 length = allLogsCount > RECENT_BREW_LOGS_COUNT ? RECENT_BREW_LOGS_COUNT : allLogsCount;
-        lastBrewLogs = new BrewLog[](length);
-
-        for (uint256 i = 0; i < length; ++i) {
-            lastBrewLogs[i] = _allBrewLogs[allLogsCount - i - 1];
-        }
-    }
-
-    /// @notice Returns the [n] brew logs of a plague doctor
-    /// @dev Returns [n] number of brew logs if plague doctor has brewed up to [n] times
-    /// @param _doctorID Token ID of plague doctor
-    /// @param _count Number of latest brew logs to return
-    /// @return lastNBrewLogs Last [n] brew logs of plague doctor
-    function getBrewLogs(uint256 _doctorID, uint256 _count) external view override returns (BrewLog[] memory) {
-        uint256 totalDoctorBrews = _getTotalBrewsCount(_doctorID);
-        uint256 checkedLength = _count < totalDoctorBrews ? _count : totalDoctorBrews;
-        BrewLog[] memory lastNBrewLogs = new BrewLog[](checkedLength);
-
-        uint256 j = totalDoctorBrews;
-        for (uint256 i = checkedLength; i > 0;) {
-            unchecked {
-                --i;
-                --j;
-            }
-
-            lastNBrewLogs[i] = _doctorBrewLogs[_doctorID][j];
-        }
-
-        return lastNBrewLogs;
+    function _getTotalBrewsCount(uint256 _doctorID) private view returns (uint256 doctorBrewsCount) {
+        doctorBrewsCount = _doctorBrewLogs[_doctorID].length;
     }
 }
