@@ -9,60 +9,46 @@ interface ILaunchpeg is IERC721Enumerable {
 }
 
 interface IApothecary {
-    event SentPotion(uint256 indexed doctorId);
-
-    event PotionsAdded(uint256[] potions);
-
-    event PotionsRemoved(uint256 amount);
-
     struct BrewLog {
         uint256 timestamp;
-        uint256 doctorId;
+        uint256 doctorID;
         bool brewPotion;
     }
 
+    event PotionClaimed(uint256 indexed doctorID);
+    event PotionBrewed(uint256 indexed doctorID);
+    event PotionsAdded(uint256 amount);
+    event PotionsRemoved(uint256 amount);
+
+    // Contract addresses
     function plagueGame() external view returns (IPlagueGame);
-
     function potions() external view returns (ILaunchpeg);
+    function doctors() external view returns (IERC721);
 
-    function doctors() external view returns (IERC721Enumerable);
+    // Contract settings
+    function claimStartTime() external view returns (uint256);
+    function getDifficulty(uint256 epoch) external view returns (uint256);
+    function AMOUNT_OF_DEAD_DOCTORS_TO_BREW() external view returns (uint256);
 
-    function startTime() external view returns (uint256);
-
-    function totalPotionsMinted() external view returns (uint256);
-
-    function totalBrewsCount() external view returns (uint256);
-
-    function getTotalBrewsCount(uint256 _doctorId) external view returns (uint256 doctorBrewsCount);
-
-    function getlatestBrewLogs() external view returns (BrewLog[] memory lastBrewLogs);
-
-    function getBrewLogs(uint256 _doctorId, uint256 _count) external view returns (BrewLog[] memory lastBrewLogs);
-
-    function getTimeToNextEpoch() external view returns (uint256 countdown);
-
-    function getPotionsLeft() external view returns (uint256 potionsLeft);
-
-    function getVRFForEpoch(uint256 _epochTimestamp) external view returns (uint256 epochVRF);
-
-    function difficultyPerEpoch(uint256 _epochIndex) external view returns (uint256 winDifficulty);
-
-    function triedToBrewPotionDuringEpoch(uint256 _epochTimestamp, uint256 _doctorId)
-        external
-        view
-        returns (bool tried);
-
-    function setStartTime(uint256 _startTime) external;
-
-    function setDifficulty(uint256[] calldata _difficultyPerEpoch) external;
-
-    function addPotions(uint256[] calldata _potionIds) external;
-
-    function removePotions(uint256 amount) external;
-
-    function makePotions(uint256[] calldata _doctorIds) external;
-
-    function makePotion(uint256 _doctorId) external;
-
+    // Contract interractions
+    function claimPotions(uint256[] calldata doctorIDs) external;
+    function makePotions(uint256[] calldata doctorIDs) external;
     function requestVRFforCurrentEpoch() external;
+
+    // Doctor data
+    function hasMintedFirstPotion(uint256 doctorID) external view returns (bool);
+    function triedBrewInEpoch(uint256 epoch, uint256 doctorID) external view returns (bool);
+
+    // Logs
+    function totalPotionsBrewed() external view returns (uint256);
+    function totalBrewsCount() external view returns (uint256);
+    function getLatestBrewLogs() external view returns (BrewLog[] memory);
+    function getBrewLogs(uint256 doctorId, uint256 count) external view returns (BrewLog[] memory);
+    function getTotalBrewsCountForDoctor(uint256 doctorID) external view returns (uint256);
+
+    // Admin
+    function setClaimStartTime(uint256 newClaimStartTime) external;
+    function setDifficulty(uint256[] calldata difficultyPerEpoch) external;
+    function addPotions(uint256[] calldata potionIds) external;
+    function removePotions(uint256 amount) external;
 }

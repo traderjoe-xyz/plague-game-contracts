@@ -10,44 +10,38 @@ import "./IPlagueGame.sol";
 /// @author Trader Joe
 /// @title Apothecary
 /// @notice Contract used to distribute potions to doctors
-contract Apothecary is Ownable, VRFConsumerBaseV2 {
-    struct BrewLog {
-        uint256 timestamp;
-        uint256 doctorID;
-        bool brewPotion;
-    }
-
+contract Apothecary is IApothecary, Ownable, VRFConsumerBaseV2 {
     /// @notice Contract address of the plague game
-    IPlagueGame public immutable plagueGame;
+    IPlagueGame public immutable override plagueGame;
     /// @notice Contract address of the potion NFTs
-    ILaunchpeg public immutable potions;
+    ILaunchpeg public immutable override potions;
     /// @notice Contract address of the plague doctor NFTs
-    IERC721 public immutable doctors;
+    IERC721 public immutable override doctors;
 
     /// @notice Timestamp for Apothecary to allow plague doctors to brew potions
-    uint256 public claimStartTime;
+    uint256 public override claimStartTime;
     /// @notice Amount of dead doctors necessary to try to brew a potion
-    uint256 public constant AMOUNT_OF_DEAD_DOCTORS_TO_BREW = 5;
+    uint256 public constant override AMOUNT_OF_DEAD_DOCTORS_TO_BREW = 5;
     /// @dev Probability for a doctor to receive a potion when he tries to brew one.
     /// @dev difficulty decreases from 1 (100% probability) to 100,000 (0.001% probability)
     uint256[] private _difficultyPerEpoch;
 
     /// @notice Used to check if a doctor already minted its first potion
-    mapping(uint256 => bool) public hasMintedFirstPotion;
+    mapping(uint256 => bool) public override hasMintedFirstPotion;
     /// @notice Keep track if a plague doctor has tried to brew in an epoch
     /// @dev Mapping from the epoch index to plague doctor ID to tried state
-    mapping(uint256 => mapping(uint256 => bool)) public triedBrewInEpoch;
+    mapping(uint256 => mapping(uint256 => bool)) public override triedBrewInEpoch;
 
     /// @notice Total number of plague doctors brew attempts
-    uint256 public totalBrewsCount;
+    uint256 public override totalBrewsCount;
     /// @notice Total number of succesful brews
-    uint256 public totalPotionsBrewed;
-    /// @notice Number of latest brew logs to keep track of
-    uint256 public constant RECENT_BREW_LOGS_COUNT = 100;
-    /// @notice Ordered brew logs of all plague doctors
-    BrewLog[] public allBrewLogs;
-    /// @notice Brew logs of the plague doctors
+    uint256 public override totalPotionsBrewed;
+    /// @dev Ordered brew logs of all plague doctors
+    BrewLog[] private _allBrewLogs;
+    /// @dev Brew logs of the plague doctors
     mapping(uint256 => BrewLog[]) private _doctorBrewLogs;
+    /// @dev Number of latest brew logs to keep track of
+    uint256 private constant RECENT_BREW_LOGS_COUNT = 100;
 
     /// @dev Potions owned by the contract
     uint256[] private _potionsOwnedByContract;
@@ -64,11 +58,6 @@ contract Apothecary is Ownable, VRFConsumerBaseV2 {
     bytes32 private immutable _keyHash;
     /// @dev Max gas used on the VRF callback
     uint32 private immutable _maxGas;
-
-    event PotionClaimed(uint256 indexed doctorID);
-    event PotionBrewed(uint256 indexed doctorID);
-    event PotionsAdded(uint256 amount);
-    event PotionsRemoved(uint256 amount);
 
     /**
      * Constructor *
@@ -126,7 +115,7 @@ contract Apothecary is Ownable, VRFConsumerBaseV2 {
 
     /// @notice Claims the intial potion for an array of doctors
     /// @param _doctorIDs Array of doctor IDs
-    function claimPotions(uint256[] calldata _doctorIDs) external {
+    function claimPotions(uint256[] calldata _doctorIDs) external override {
         if (block.timestamp < claimStartTime) {
             revert ClaimNotStarted();
         }
@@ -153,7 +142,7 @@ contract Apothecary is Ownable, VRFConsumerBaseV2 {
     /// @notice Tries to brew a potion using 5 dead doctors
     /// @dev Can be used with several batches of 5 dead doctors
     /// @param _doctorIDs Array of doctor IDs
-    function makePotions(uint256[] calldata _doctorIDs) external {
+    function makePotions(uint256[] calldata _doctorIDs) external override {
         if (!plagueGame.isGameStarted()) {
             revert GameNotStarted();
         }
@@ -222,7 +211,7 @@ contract Apothecary is Ownable, VRFConsumerBaseV2 {
         }
 
         _doctorBrewLogs[_doctorID].push(brewLog);
-        allBrewLogs.push(brewLog);
+        _allBrewLogs.push(brewLog);
     }
 
     /// @notice Callback by VRFConsumerBaseV2 to pass VRF results
@@ -275,7 +264,7 @@ contract Apothecary is Ownable, VRFConsumerBaseV2 {
     /// After reaching the end of the difficulty array, the last value is returned
     /// @param _epoch Epoch
     /// @return difficulty Difficulty for the considered epoch
-    function getDifficulty(uint256 _epoch) public view returns (uint256 difficulty) {
+    function getDifficulty(uint256 _epoch) public view override returns (uint256 difficulty) {
         if (_epoch == 0) {
             return difficulty = 0;
         }
@@ -287,7 +276,7 @@ contract Apothecary is Ownable, VRFConsumerBaseV2 {
     }
 
     /// @notice Request a random number from VRF for the current epoch
-    function requestVRFforCurrentEpoch() external {
+    function requestVRFforCurrentEpoch() external override {
         uint256 currentEpoch = plagueGame.currentEpoch();
 
         if (_epochRequestID[currentEpoch] != 0) {
@@ -304,7 +293,7 @@ contract Apothecary is Ownable, VRFConsumerBaseV2 {
     /// @notice Sets the start timestamp for claiming potions
     /// @dev Start time can only be set in the future
     /// @param _startTime Start timestamp for claiming potions
-    function setClaimStartTime(uint256 _startTime) external onlyOwner {
+    function setClaimStartTime(uint256 _startTime) external override onlyOwner {
         if (block.timestamp >= claimStartTime) {
             revert ClaimHasStarted();
         }
@@ -318,7 +307,7 @@ contract Apothecary is Ownable, VRFConsumerBaseV2 {
     /// @notice Sets the difficulty of brewing a free potion
     /// @dev Probability is calculated as inverse of difficulty. (1 / difficulty)
     /// @param difficultyPerEpoch_ Difficulty of brewing a free potion
-    function setDifficulty(uint256[] calldata difficultyPerEpoch_) external onlyOwner {
+    function setDifficulty(uint256[] calldata difficultyPerEpoch_) external override onlyOwner {
         uint256 difficultyPerEpochLength = difficultyPerEpoch_.length;
         for (uint256 i = 1; i < difficultyPerEpochLength; ++i) {
             if (difficultyPerEpoch_[i] < 1 || difficultyPerEpoch_[i] > 100_000) {
@@ -331,7 +320,7 @@ contract Apothecary is Ownable, VRFConsumerBaseV2 {
     /// @notice Transfer potions from owner to the Apothecary contract
     /// @dev Potion IDs should be approved before this function is called
     /// @param _potionIDs Potion IDs to be transferred from owner to Apothecary contract
-    function addPotions(uint256[] calldata _potionIDs) external onlyOwner {
+    function addPotions(uint256[] calldata _potionIDs) external override onlyOwner {
         for (uint256 i = 0; i < _potionIDs.length; ++i) {
             potions.transferFrom(msg.sender, address(this), _potionIDs[i]);
             _potionsOwnedByContract.push(_potionIDs[i]);
@@ -342,7 +331,7 @@ contract Apothecary is Ownable, VRFConsumerBaseV2 {
     /// @notice Transfers potions from the Apothecary contract to the owner
     /// @dev Potion IDs should be owned by the Apothecary contract
     /// @param _amount Number of potions to be transferred from the Apothecary contract to the owner
-    function removePotions(uint256 _amount) external onlyOwner {
+    function removePotions(uint256 _amount) external override onlyOwner {
         for (uint256 i = 0; i < _amount; ++i) {
             _sendPotion(msg.sender);
         }
@@ -356,19 +345,19 @@ contract Apothecary is Ownable, VRFConsumerBaseV2 {
     /// @notice Returns the total number of brew attempts from a plague doctor
     /// @param _doctorID Token ID of plague doctor
     /// @return doctorBrewsCount Number of brew attempts from plague doctor
-    function getTotalBrewsCount(uint256 _doctorID) external view returns (uint256 doctorBrewsCount) {
+    function getTotalBrewsCountForDoctor(uint256 _doctorID) external view override returns (uint256 doctorBrewsCount) {
         doctorBrewsCount = _getTotalBrewsCount(_doctorID);
     }
 
     /// @notice Returns the latest brew logs
     /// @return lastBrewLogs Latest brew logs
-    function getlatestBrewLogs() external view returns (BrewLog[] memory lastBrewLogs) {
-        uint256 allLogsCount = allBrewLogs.length;
+    function getLatestBrewLogs() external view override returns (BrewLog[] memory lastBrewLogs) {
+        uint256 allLogsCount = _allBrewLogs.length;
         uint256 length = allLogsCount > RECENT_BREW_LOGS_COUNT ? RECENT_BREW_LOGS_COUNT : allLogsCount;
         lastBrewLogs = new BrewLog[](length);
 
         for (uint256 i = 0; i < length; ++i) {
-            lastBrewLogs[i] = allBrewLogs[allLogsCount - i - 1];
+            lastBrewLogs[i] = _allBrewLogs[allLogsCount - i - 1];
         }
     }
 
@@ -377,7 +366,7 @@ contract Apothecary is Ownable, VRFConsumerBaseV2 {
     /// @param _doctorID Token ID of plague doctor
     /// @param _count Number of latest brew logs to return
     /// @return lastNBrewLogs Last [n] brew logs of plague doctor
-    function getBrewLogs(uint256 _doctorID, uint256 _count) external view returns (BrewLog[] memory) {
+    function getBrewLogs(uint256 _doctorID, uint256 _count) external view override returns (BrewLog[] memory) {
         uint256 totalDoctorBrews = _getTotalBrewsCount(_doctorID);
         uint256 checkedLength = _count < totalDoctorBrews ? _count : totalDoctorBrews;
         BrewLog[] memory lastNBrewLogs = new BrewLog[](checkedLength);
