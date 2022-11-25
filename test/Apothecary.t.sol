@@ -53,18 +53,18 @@ contract ApothecaryTest is PlagueGameTest {
 
         // Shouldn't be possible before the claim start time
         vm.expectRevert(ClaimNotStarted.selector);
-        apothecary.claimPotions(doctorIds);
+        apothecary.claimFirstPotions(doctorIds);
 
         vm.warp(claimStartTime);
-        apothecary.claimPotions(doctorIds);
+        apothecary.claimFirstPotions(doctorIds);
 
         // Shouldn't be possible to claim twice
         doctorIds = [4, 5, 6];
         vm.expectRevert(DoctorAlreadyClaimed.selector);
-        apothecary.claimPotions(doctorIds);
+        apothecary.claimFirstPotions(doctorIds);
 
         doctorIds = [5, 6];
-        apothecary.claimPotions(doctorIds);
+        apothecary.claimFirstPotions(doctorIds);
 
         for (uint256 i = 0; i < 7; i++) {
             assertEq(apothecary.hasMintedFirstPotion(i), true, "Doctor should have minted their first potion");
@@ -191,7 +191,7 @@ contract ApothecaryTest is PlagueGameTest {
         apothecary.setClaimStartTime(block.timestamp + 1 days);
     }
 
-    function testDifficulty() public {
+    function testDifficulty() public prepareForPotions {
         for (uint256 i = 0; i < difficultyPerEpoch.length; i++) {
             assertEq(
                 apothecary.getDifficulty(i + 1), difficultyPerEpoch[i], "Difficulty should be equal to the one set"
@@ -223,6 +223,30 @@ contract ApothecaryTest is PlagueGameTest {
             apothecary.getDifficulty(difficultyPerEpoch.length),
             "Difficulty should be the same for epochs after the last one"
         );
+
+        difficultyPerEpoch = [50, 50];
+        apothecary.setDifficulty(difficultyPerEpoch);
+
+        assertEq(
+            apothecary.getDifficulty(difficultyPerEpoch.length + 99),
+            apothecary.getDifficulty(difficultyPerEpoch.length),
+            "Difficulty should be the same for epochs after the last one"
+        );
+
+        doctorIds = [0, 1, 2, 3, 4];
+
+        _killDoctors(doctorIds);
+        apothecary.requestVRFforCurrentEpoch();
+        _mockVRFResponse(address(apothecary));
+
+        apothecary.makePotions(doctorIds);
+
+        difficultyPerEpoch = [50, 50, 50, 50, 50, 35];
+        apothecary.setDifficulty(difficultyPerEpoch);
+
+        doctorIds = [5, 6, 7, 8, 9];
+        _killDoctors(doctorIds);
+        apothecary.makePotions(doctorIds);
     }
 
     function testAddRemovePotions() public {

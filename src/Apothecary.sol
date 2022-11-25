@@ -84,23 +84,12 @@ contract Apothecary is IApothecary, Ownable, VRFConsumerBaseV2 {
         bytes32 keyHash_,
         uint32 maxGas_
     ) VRFConsumerBaseV2(address(vrfCoordinator_)) {
-        if (_claimStartTime < block.timestamp) {
-            revert InvalidStartTime();
-        }
-
-        /// There will be no dead doctors in epoch 1, so we don't need to check for that
-        uint256 difficultyPerEpochLength = difficultyPerEpoch_.length;
-        for (uint256 i = 1; i < difficultyPerEpochLength; i++) {
-            if (difficultyPerEpoch_[i] < 1 || difficultyPerEpoch_[i] > 100_000) {
-                revert InvalidDifficulty();
-            }
-        }
+        setClaimStartTime(_claimStartTime);
+        setDifficulty(difficultyPerEpoch_);
 
         plagueGame = _plagueGame;
         potions = _potions;
         doctors = _doctors;
-        claimStartTime = _claimStartTime;
-        _difficultyPerEpoch = difficultyPerEpoch_;
 
         // VRF setup
         _vrfCoordinator = vrfCoordinator_;
@@ -115,7 +104,7 @@ contract Apothecary is IApothecary, Ownable, VRFConsumerBaseV2 {
 
     /// @notice Claims the intial potion for an array of doctors
     /// @param _doctorIDs Array of doctor IDs
-    function claimPotions(uint256[] calldata _doctorIDs) external override {
+    function claimFirstPotions(uint256[] calldata _doctorIDs) external override {
         if (block.timestamp < claimStartTime) {
             revert ClaimNotStarted();
         }
@@ -179,7 +168,7 @@ contract Apothecary is IApothecary, Ownable, VRFConsumerBaseV2 {
             _tryBrew(_doctorIDs[i], currentEpoch, randomNumber);
         }
 
-        ++totalBrewsCount;
+        totalBrewsCount += doctorIDsLength / 5;
     }
 
     /// @notice Request a random number from VRF for the current epoch
@@ -261,8 +250,8 @@ contract Apothecary is IApothecary, Ownable, VRFConsumerBaseV2 {
     /// @notice Sets the start timestamp for claiming potions
     /// @dev Start time can only be set in the future
     /// @param _startTime Start timestamp for claiming potions
-    function setClaimStartTime(uint256 _startTime) external override onlyOwner {
-        if (block.timestamp >= claimStartTime) {
+    function setClaimStartTime(uint256 _startTime) public override onlyOwner {
+        if (claimStartTime != 0 && block.timestamp >= claimStartTime) {
             revert ClaimHasStarted();
         }
         if (_startTime < block.timestamp) {
@@ -270,12 +259,14 @@ contract Apothecary is IApothecary, Ownable, VRFConsumerBaseV2 {
         }
 
         claimStartTime = _startTime;
+
+        emit ClaimStartTimeSet(_startTime);
     }
 
     /// @notice Sets the difficulty of brewing a free potion
     /// @dev Probability is calculated as inverse of difficulty. (1 / difficulty)
     /// @param difficultyPerEpoch_ Difficulty of brewing a free potion
-    function setDifficulty(uint256[] calldata difficultyPerEpoch_) external override onlyOwner {
+    function setDifficulty(uint256[] memory difficultyPerEpoch_) public override onlyOwner {
         uint256 difficultyPerEpochLength = difficultyPerEpoch_.length;
         for (uint256 i = 1; i < difficultyPerEpochLength; ++i) {
             if (difficultyPerEpoch_[i] < 1 || difficultyPerEpoch_[i] > 100_000) {
@@ -283,6 +274,8 @@ contract Apothecary is IApothecary, Ownable, VRFConsumerBaseV2 {
             }
         }
         _difficultyPerEpoch = difficultyPerEpoch_;
+
+        emit DifficultySet(difficultyPerEpoch_);
     }
 
     /// @notice Transfer potions from owner to the Apothecary contract
@@ -347,20 +340,17 @@ contract Apothecary is IApothecary, Ownable, VRFConsumerBaseV2 {
         _potionsOwnedByContract.pop();
     }
 
-    /// @notice Returns number of potions owned by Apothecary contract
-    /// @return potionsLeft Number of potions owned by contract
-    function _getPotionsLeft() private view returns (uint256 potionsLeft) {
-        potionsLeft = potions.balanceOf(address(this));
-    }
-
     /// @notice Returns first token ID of potions owned by Apothecary contract
     /// @dev Reverts if no potions is owned by Apothecary contract
     /// @return potionID First potion ID owned by Apothecary contract
     function _getPotionID() private view returns (uint256 potionID) {
-        if (_getPotionsLeft() == 0) {
+        uint256 potionsOwnedByContractLength = _potionsOwnedByContract.length;
+
+        if (potionsOwnedByContractLength == 0) {
             revert NoPotionLeft();
         }
-        potionID = _potionsOwnedByContract[_potionsOwnedByContract.length - 1];
+
+        potionID = _potionsOwnedByContract[potionsOwnedByContractLength - 1];
     }
 
     /// @notice Callback by VRFConsumerBaseV2 to pass VRF results

@@ -20,6 +20,9 @@ interface IApothecary {
     event PotionsAdded(uint256 amount);
     event PotionsRemoved(uint256 amount);
 
+    event ClaimStartTimeSet(uint256 timestamp);
+    event DifficultySet(uint256[] difficulty);
+
     // Contract addresses
     function plagueGame() external view returns (IPlagueGame);
     function potions() external view returns (ILaunchpeg);
@@ -31,7 +34,7 @@ interface IApothecary {
     function AMOUNT_OF_DEAD_DOCTORS_TO_BREW() external view returns (uint256);
 
     // Contract interractions
-    function claimPotions(uint256[] calldata doctorIDs) external;
+    function claimFirstPotions(uint256[] calldata doctorIDs) external;
     function makePotions(uint256[] calldata doctorIDs) external;
     function requestVRFforCurrentEpoch() external;
 
