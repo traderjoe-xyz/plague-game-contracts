@@ -16,14 +16,15 @@ contract PlagueGameTest is Test {
     uint256 collectionSize = 10_000;
     uint256 epochNumber = 12;
     uint256 playerNumberToEndGame = 10;
-    uint256[] infectionPercentagePerEpoch =
+    uint256[] infectionPercentages =
         [2_000, 2_000, 2_000, 3_000, 3_000, 3_000, 4_000, 4_000, 4_000, 5_000, 5_000, 5_000];
+    uint256[] cureSuccessRates = [10_000, 10_000, 10_000, 9_000, 8_000, 7_000, 6_000, 5_000, 4_000, 3_000, 2_000, 1_000];
     uint256 epochDuration = 1 days;
     uint256 prizePot = 100 ether;
     uint256 gameStartTime = block.timestamp + 24 hours;
 
     // Test configuration
-    uint256[] curedDoctorsPerEpoch = [1200, 1100, 1000, 900, 500, 400, 300, 200, 150, 100, 50, 20, 0, 0, 0, 0, 0, 0];
+    uint256[] curedDoctorsPerEpoch = [1200, 1100, 1000, 900, 500, 400, 300, 200, 150, 100, 50, 20, 1, 1, 1, 0, 0, 0];
     uint256[] randomWords = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
     // VRF configuration
@@ -66,7 +67,8 @@ contract PlagueGameTest is Test {
             potions,
             gameStartTime,
             playerNumberToEndGame,
-            infectionPercentagePerEpoch,
+            infectionPercentages,
+            cureSuccessRates,
             epochDuration,
             coordinator,
             subscriptionId,
@@ -99,6 +101,32 @@ contract PlagueGameTest is Test {
             (lastSubscriptionBalance - vrfBalance) * 15_000 / 10_000, maxGas, "Too much gas has been consumed by VRF"
         );
         lastSubscriptionBalance = vrfBalance;
+    }
+
+    function _forceDoctorStatus(uint256 _doctorID, IPlagueGame.Status _status) internal {
+        uint256 firstStorageSlotForStatus = 645;
+
+        uint256 storageSlot = firstStorageSlotForStatus + (_doctorID / 128);
+        uint256 statusItem =
+            uint256(vm.load(address(plagueGame), bytes32(firstStorageSlotForStatus + (_doctorID / 128))));
+
+        uint256 shift = (_doctorID % 128) * 2;
+        uint256 mask = ~(0x03 << shift);
+
+        statusItem &= mask;
+        statusItem |= uint256(_status) << shift;
+
+        vm.store(address(plagueGame), bytes32(storageSlot), bytes32(statusItem));
+
+        assertEq(
+            uint256(plagueGame.doctorStatus(_doctorID)), uint256(_status), "Doctor should be at the correct status"
+        );
+    }
+
+    function _forceDoctorStatuses(uint256[] memory _doctorsIds, IPlagueGame.Status _status) internal {
+        for (uint256 i = 0; i < _doctorsIds.length; i++) {
+            _forceDoctorStatus(_doctorsIds[i], _status);
+        }
     }
 
     receive() external payable {}
