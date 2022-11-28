@@ -18,6 +18,7 @@ error NoPotionLeft();
 // Plague Game Errors
 error InvalidPlayerNumberToEndGame();
 error InvalidInfectionPercentage();
+error InvalidSuccessRatePercentage();
 error InvalidEpochDuration();
 error TooManyInitialized();
 error InvalidCollection();
@@ -40,3 +41,4 @@ error FundsTransferFailed();
 // VRF Errors
 error VRFResponseMissing();
 error VRFAlreadyRequested();
+error VRFUnknownRequest();

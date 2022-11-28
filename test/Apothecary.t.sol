@@ -90,7 +90,7 @@ contract ApothecaryTest is PlagueGameTest {
         vm.expectRevert(DoctorNotDead.selector);
         apothecary.makePotions(doctorIds);
 
-        _killDoctors(doctorIds);
+        _forceDoctorStatuses(doctorIds, IPlagueGame.Status.Dead);
 
         // Can't try if the doctors are not yours
         vm.prank(BOB);
@@ -123,7 +123,7 @@ contract ApothecaryTest is PlagueGameTest {
         // Claiming for 5 doctors
         doctorIds = [0, 1, 2, 3, 4];
 
-        _killDoctors(doctorIds);
+        _forceDoctorStatuses(doctorIds, IPlagueGame.Status.Dead);
         apothecary.requestVRFforCurrentEpoch();
 
         uint256 currentDifficulty = apothecary.getDifficulty(plagueGame.currentEpoch());
@@ -235,7 +235,7 @@ contract ApothecaryTest is PlagueGameTest {
 
         doctorIds = [0, 1, 2, 3, 4];
 
-        _killDoctors(doctorIds);
+        _forceDoctorStatuses(doctorIds, IPlagueGame.Status.Dead);
         apothecary.requestVRFforCurrentEpoch();
         _mockVRFResponse(address(apothecary));
 
@@ -245,7 +245,7 @@ contract ApothecaryTest is PlagueGameTest {
         apothecary.setDifficulty(difficultyPerEpoch);
 
         doctorIds = [5, 6, 7, 8, 9];
-        _killDoctors(doctorIds);
+        _forceDoctorStatuses(doctorIds, IPlagueGame.Status.Dead);
         apothecary.makePotions(doctorIds);
     }
 
@@ -308,25 +308,6 @@ contract ApothecaryTest is PlagueGameTest {
         _mockVRFResponse(address(plagueGame));
         plagueGame.computeInfectedDoctors(collectionSize);
         plagueGame.startEpoch();
-    }
-
-    function _killDoctors(uint256[] memory _doctorsIds) private {
-        uint256 firstStorageSlotForStatus = 640;
-
-        for (uint256 i = 0; i < _doctorsIds.length; i++) {
-            uint256 doctorId = _doctorsIds[i];
-
-            uint256 storageSlot = firstStorageSlotForStatus + (doctorId / 128);
-            uint256 statusItem = uint256(vm.load(address(plagueGame), bytes32(storageSlot)));
-
-            uint256 mask = ~(3 << (doctorId % 128) * 2);
-
-            vm.store(address(plagueGame), bytes32(storageSlot), bytes32(statusItem & mask));
-
-            assertEq(
-                uint256(plagueGame.doctorStatus(doctorId)), uint256(IPlagueGame.Status.Dead), "Doctor should be dead"
-            );
-        }
     }
 
     function _mockVRFResponse(address _consumer) private {

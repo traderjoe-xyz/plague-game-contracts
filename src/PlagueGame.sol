@@ -2,6 +2,7 @@
 pragma solidity ^0.8.13;
 
 import "openzeppelin/access/Ownable.sol";
+
 import "chainlink/VRFConsumerBaseV2.sol";
 import "chainlink/interfaces/VRFCoordinatorV2Interface.sol";
 
@@ -17,14 +18,16 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
     /// @notice Number of doctors still alive triggering the end of the game
     uint256 public immutable override playerNumberToEndGame;
     /// @notice Percentage of doctors that will be infected each epoch
-    uint256[] public override infectionPercentagePerEpoch;
-    /// @notice Total number of epochs with a defined infection percentage. If the game lasts longer, the last percentage defined will be used
-    uint256 public immutable override totalDefinedEpochNumber;
+    uint256[] public override infectionPercentages;
+    /// @notice Potions cure success rate, in basis points
+    uint256[] public override cureSuccessRates;
     /// @dev Number of doctors in the collection
     uint256 private immutable _doctorNumber;
 
     /// @notice Number of healthy doctors
     uint256 public override healthyDoctorsNumber;
+    /// @notice Number of potions a doctor already drank
+    mapping(uint256 => uint256) public override potionUsed;
 
     /// @notice Current epoch. Epoch is incremented at the beginning of each epoch
     uint256 public override currentEpoch;
@@ -39,10 +42,23 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
     mapping(uint256 => uint256) public override curedDoctorsPerEpoch;
     /// @notice Stores if a user already claimed his prize for a doctors he owns
     mapping(uint256 => bool) public override withdrewPrize;
-    /// @notice VRF request IDs for each epoch
+
+    enum VRFRequestType {
+        Unknown,
+        Cure,
+        Infection
+    }
+
+    /// @dev VRF request type
+    mapping(uint256 => VRFRequestType) private _vrfRequestType;
+    /// @dev VRF request IDs for each epoch
     mapping(uint256 => uint256) private _epochVRFRequest;
-    /// @notice VRF response for each epoch
+    /// @dev VRF response for each epoch
     mapping(uint256 => uint256) private _epochVRFNumber;
+    /// @dev Doctor related to a VRF request
+    mapping(uint256 => uint256) private _vrfRequestDoctor;
+    /// @dev Blocks VRF requests from a doctor that already has one pending
+    mapping(uint256 => bool) private _vrfRequestPending;
     /// @dev Stores if an epoch has ended
     mapping(uint256 => bool) private _epochEnded;
 
@@ -104,7 +120,8 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
     /// @dev Constructor
     /// @param _doctors Address of the doctor collection contract
     /// @param _potions Address of the potion collection contract
-    /// @param _infectionPercentagePerEpoch Percentage of doctors that will  be infected each epoch
+    /// @param _infectionPercentages Percentage of doctors that will  be infected each epoch
+    /// @param _cureSuccessRates Percentage of success when drinking a potion
     /// @param _playerNumberToEndGame Number of doctors still alive triggering the end of the game
     /// @param _epochDuration Duration of each epoch in seconds
     /// @param vrfCoordinator_ Address of the VRF coordinator
@@ -116,7 +133,8 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
         IERC721Enumerable _potions,
         uint256 _startTime,
         uint256 _playerNumberToEndGame,
-        uint256[] memory _infectionPercentagePerEpoch,
+        uint256[] memory _infectionPercentages,
+        uint256[] memory _cureSuccessRates,
         uint256 _epochDuration,
         VRFCoordinatorV2Interface vrfCoordinator_,
         uint64 subscriptionId_,
@@ -135,9 +153,15 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
             revert InvalidStartTime();
         }
 
-        for (uint256 i = 0; i < _infectionPercentagePerEpoch.length; i++) {
-            if (_infectionPercentagePerEpoch[i] > BASIS_POINT) {
+        for (uint256 i = 0; i < _infectionPercentages.length; i++) {
+            if (_infectionPercentages[i] > BASIS_POINT) {
                 revert InvalidInfectionPercentage();
+            }
+        }
+
+        for (uint256 i = 0; i < _cureSuccessRates.length; i++) {
+            if (_cureSuccessRates[i] == 0 || _cureSuccessRates[i] > BASIS_POINT) {
+                revert InvalidSuccessRatePercentage();
             }
         }
 
@@ -152,8 +176,8 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
         potions = _potions;
         startTime = _startTime;
         playerNumberToEndGame = _playerNumberToEndGame;
-        infectionPercentagePerEpoch = _infectionPercentagePerEpoch;
-        totalDefinedEpochNumber = _infectionPercentagePerEpoch.length;
+        infectionPercentages = _infectionPercentages;
+        cureSuccessRates = _cureSuccessRates;
         epochDuration = _epochDuration;
 
         // VRF setup
@@ -304,13 +328,28 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
             revert DoctorNotInfected();
         }
 
-        uint256 currentEpochCached = currentEpoch;
-        curedDoctorsPerEpoch[currentEpochCached] += 1;
-        _updateDoctorStatusStorage(_doctorId, Status.Healthy);
-        _addDoctorToHealthySet(_doctorId);
-        _burnPotion(_potionId);
+        uint256 potionUsedByDoctor = potionUsed[_doctorId]++;
 
-        emit DoctorCured(_doctorId, _potionId, currentEpochCached);
+        if (_getCureSuccessRate(potionUsedByDoctor) == BASIS_POINT) {
+            uint256 currentEpochCached = currentEpoch;
+            curedDoctorsPerEpoch[currentEpochCached] += 1;
+            _updateDoctorStatusStorage(_doctorId, Status.Healthy);
+            _addDoctorToHealthySet(_doctorId);
+
+            emit DoctorCured(_doctorId, currentEpochCached);
+        } else {
+            if (_vrfRequestPending[_doctorId]) {
+                revert VRFAlreadyRequested();
+            }
+
+            _vrfRequestPending[_doctorId] = true;
+
+            uint256 requestID = _vrfCoordinator.requestRandomWords(_keyHash, _subscriptionId, 3, _maxGas, 1);
+            _vrfRequestDoctor[requestID] = _doctorId;
+            _vrfRequestType[requestID] = VRFRequestType.Cure;
+        }
+
+        _burnPotion(_potionId);
     }
 
     /// @notice Updates the game start time
@@ -420,7 +459,14 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
 
         infectedDoctorsPerEpoch[_nextEpoch] = toMakeSick;
 
-        _requestRandomWords();
+        // Extra safety check, but that shouldn't happen
+        if (_epochVRFNumber[_epochVRFRequest[_nextEpoch]] != 0) {
+            revert VRFAlreadyRequested();
+        }
+
+        uint256 requestID = _vrfCoordinator.requestRandomWords(_keyHash, _subscriptionId, 3, _maxGas, 1);
+        _epochVRFRequest[_nextEpoch] = requestID;
+        _vrfRequestType[requestID] = VRFRequestType.Infection;
     }
 
     /// @dev Updates the doctor status directly on storage
@@ -529,9 +575,21 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
     /// @param _epoch Epoch
     /// @return infectionRate Infection rate for the considered epoch
     function _getinfectionRate(uint256 _epoch) private view returns (uint256 infectionRate) {
-        infectionRate = _epoch > totalDefinedEpochNumber
-            ? infectionPercentagePerEpoch[totalDefinedEpochNumber - 1]
-            : infectionPercentagePerEpoch[_epoch - 1];
+        uint256 infectionPercentagesLength = infectionPercentages.length;
+        infectionRate = _epoch > infectionPercentagesLength
+            ? infectionPercentages[infectionPercentagesLength - 1]
+            : infectionPercentages[_epoch - 1];
+    }
+
+    /// @dev Fetches the right cure success rate for the amount of potion the doctor already drank
+    /// If we passed the last defined amount of potions, we use the last used rate
+    /// @param _potionsDrank Amount of potion the doctor already drank
+    /// @return cureSuccessRate Cure success rate for the considered epoch
+    function _getCureSuccessRate(uint256 _potionsDrank) private view returns (uint256 cureSuccessRate) {
+        uint256 cureSuccessRatesLength = cureSuccessRates.length;
+        cureSuccessRate = _potionsDrank >= cureSuccessRatesLength
+            ? cureSuccessRates[cureSuccessRatesLength - 1]
+            : cureSuccessRates[_potionsDrank];
     }
 
     /// @dev Loops through the healthy doctors and infects them until
@@ -574,34 +632,45 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
         potions.transferFrom(msg.sender, address(0xdead), _potionId);
     }
 
-    /// @dev Get one random number that will be shuffled as many times as needed to infect n random doctors
-    function _requestRandomWords() private {
-        uint256 nextEpochCached = currentEpoch + 1;
-        // Extra safety check, but that shouldn't happen
-        if (_epochVRFNumber[_epochVRFRequest[nextEpochCached]] != 0) {
-            revert VRFAlreadyRequested();
-        }
-
-        _epochVRFRequest[nextEpochCached] = _vrfCoordinator.requestRandomWords(_keyHash, _subscriptionId, 3, _maxGas, 1);
-    }
-
     /// @dev Callback function used by VRF Coordinator
     /// @param _requestId Request ID
     /// @param _randomWords Random numbers provided by VRF
     function fulfillRandomWords(uint256 _requestId, uint256[] memory _randomWords) internal override {
-        uint256 nextEpochCached = currentEpoch + 1;
-        uint256 epochVRFRequestCached = _epochVRFRequest[nextEpochCached];
+        VRFRequestType requestType = _vrfRequestType[_requestId];
 
-        if (_requestId != epochVRFRequestCached) {
-            revert InvalidRequestId();
+        if (requestType == VRFRequestType.Cure) {
+            uint256 doctorID = _vrfRequestDoctor[_requestId];
+            uint256 potionDrank = potionUsed[doctorID];
+            uint256 successRate = _getCureSuccessRate(potionDrank - 1);
+
+            _vrfRequestPending[doctorID] = false;
+
+            if (uint256(keccak256(abi.encode(_randomWords[0]))) % BASIS_POINT < successRate) {
+                uint256 epoch = currentEpoch;
+                curedDoctorsPerEpoch[epoch] += 1;
+
+                _updateDoctorStatusStorage(doctorID, Status.Healthy);
+                _addDoctorToHealthySet(doctorID);
+
+                emit DoctorCured(doctorID, epoch);
+            }
+        } else if (requestType == VRFRequestType.Infection) {
+            uint256 nextEpochCached = currentEpoch + 1;
+            uint256 epochVRFRequestCached = _epochVRFRequest[nextEpochCached];
+
+            if (_requestId != epochVRFRequestCached) {
+                revert InvalidRequestId();
+            }
+
+            if (_epochVRFNumber[epochVRFRequestCached] != 0) {
+                revert VRFAlreadyRequested();
+            }
+
+            _epochVRFNumber[_requestId] = _randomWords[0];
+
+            emit RandomWordsFulfilled(nextEpochCached, _requestId);
+        } else {
+            revert VRFUnknownRequest();
         }
-
-        if (_epochVRFNumber[epochVRFRequestCached] != 0) {
-            revert VRFAlreadyRequested();
-        }
-
-        _epochVRFNumber[_requestId] = _randomWords[0];
-
-        emit RandomWordsFulfilled(nextEpochCached, _requestId);
     }
 }

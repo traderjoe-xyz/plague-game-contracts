@@ -10,10 +10,14 @@ import "./PlagueGameTest.sol";
 import "chainlink/mocks/VRFCoordinatorV2Mock.sol";
 
 contract GameTest is PlagueGameTest {
+    uint256 cureFailedAttempts;
+
     function setUp() public override {
         super.setUp();
 
         potions.mint(collectionSize);
+        potions.setApprovalForAll(address(plagueGame), true);
+
         _initializeGame();
     }
 
@@ -124,6 +128,78 @@ contract GameTest is PlagueGameTest {
         );
     }
 
+    function testCureDoctor() public {
+        plagueGame.startGame();
+        _mockVRFResponse();
+        _computeInfectedDoctors();
+        plagueGame.startEpoch();
+
+        uint256 doctorID = 178;
+        uint256 potionUsed;
+
+        while (cureSuccessRates[plagueGame.potionUsed(doctorID)] == 10_000) {
+            _forceDoctorStatus(doctorID, IPlagueGame.Status.Infected);
+
+            plagueGame.drinkPotion(doctorID, lastPotionUsed++);
+
+            assertEq(
+                uint256(plagueGame.doctorStatus(doctorID)),
+                uint256(IPlagueGame.Status.Healthy),
+                "Doctor should be healthy after a successful cure"
+            );
+
+            assertEq(++potionUsed, plagueGame.potionUsed(doctorID), "Potion used should be incremented");
+
+            vm.expectRevert(DoctorNotInfected.selector);
+            plagueGame.drinkPotion(doctorID, lastPotionUsed);
+        }
+
+        _forceDoctorStatus(doctorID, IPlagueGame.Status.Infected);
+        plagueGame.drinkPotion(doctorID, lastPotionUsed++);
+
+        assertEq(++potionUsed, plagueGame.potionUsed(doctorID), "Potion used should be incremented");
+
+        assertEq(
+            uint256(plagueGame.doctorStatus(doctorID)),
+            uint256(IPlagueGame.Status.Infected),
+            "Doctor should remain infected since we're waiting for the VRF response"
+        );
+
+        // Can't drink potion while waiting for VRF response
+        vm.expectRevert(VRFAlreadyRequested.selector);
+        plagueGame.drinkPotion(doctorID, lastPotionUsed++);
+
+        // Testing failed attempt
+        uint256[] memory randomNumber = new uint256[](1);
+        while (
+            uint256(keccak256(abi.encode(randomNumber[0]))) % 10_000
+                < cureSuccessRates[plagueGame.potionUsed(doctorID) - 1]
+        ) {
+            randomNumber[0]++;
+        }
+
+        coordinator.fulfillRandomWordsWithOverride(s_nextRequestId++, address(plagueGame), randomNumber);
+
+        assertEq(uint256(plagueGame.doctorStatus(doctorID)), uint256(IPlagueGame.Status.Infected), "Cure should fail");
+
+        // Tries again and cure succeeds
+        _forceDoctorStatus(doctorID, IPlagueGame.Status.Infected);
+        plagueGame.drinkPotion(doctorID, lastPotionUsed++);
+
+        assertEq(++potionUsed, plagueGame.potionUsed(doctorID), "Potion used should be incremented");
+
+        while (
+            uint256(keccak256(abi.encode(randomNumber[0]))) % 10_000
+                >= cureSuccessRates[plagueGame.potionUsed(doctorID) - 1]
+        ) {
+            randomNumber[0]++;
+        }
+
+        coordinator.fulfillRandomWordsWithOverride(s_nextRequestId++, address(plagueGame), randomNumber);
+
+        assertEq(uint256(plagueGame.doctorStatus(doctorID)), uint256(IPlagueGame.Status.Healthy), "Cure should succeed");
+    }
+
     function testGame() public {
         assertEq(plagueGame.currentEpoch(), 0, "starting epoch should be 0");
         assertEq(plagueGame.healthyDoctorsNumber(), collectionSize, "all doctors should be healthy");
@@ -144,6 +220,8 @@ contract GameTest is PlagueGameTest {
 
         uint256 i;
         while (true) {
+            cureFailedAttempts = 0;
+
             uint256 healthyDoctorsEndOfEpoch = plagueGame.healthyDoctorsNumber();
 
             vm.expectRevert(InfectionNotComputed.selector);
@@ -186,15 +264,20 @@ contract GameTest is PlagueGameTest {
 
             assertEq(
                 healthyDoctorsEndOfEpoch - plagueGame.healthyDoctorsNumber(),
-                expectedInfections - doctorsToCure,
-                "Doctors should have been put back in the healthy doctors set"
+                expectedInfections - doctorsToCure + cureFailedAttempts,
+                "Some doctors should have been put back in the healthy doctors set"
             );
 
             assertEq(
                 _fetchDoctorsToStatus(IPlagueGame.Status.Infected).length,
-                expectedInfections - doctorsToCure,
+                expectedInfections - doctorsToCure + cureFailedAttempts,
                 "The expected number of doctors is infected"
             );
+
+            // If there is enough cure attempts, we can epxect that some of them will succeed
+            if (doctorsToCure > 20) {
+                assertLt(cureFailedAttempts, doctorsToCure, "All the curing attempts failed");
+            }
 
             uint256[] memory healthyDoctors = _fetchDoctorsToStatus(IPlagueGame.Status.Healthy);
             for (uint256 j = 0; j < healthyDoctors.length; j++) {
@@ -222,7 +305,7 @@ contract GameTest is PlagueGameTest {
                 // All remaining doctors should in the healthy doctors set
                 uint256 numberOfWinners = plagueGame.healthyDoctorsNumber();
 
-                uint256 firstStorageSlotForSet = 15;
+                uint256 firstStorageSlotForSet = 20;
                 uint256 setSlot = uint256(vm.load(address(plagueGame), bytes32(firstStorageSlotForSet)));
 
                 for (uint256 j = 0; j < numberOfWinners; j++) {
@@ -254,7 +337,7 @@ contract GameTest is PlagueGameTest {
             assertEq(
                 plagueGame.infectedDoctorsPerEpoch(plagueGame.currentEpoch())
                     - plagueGame.curedDoctorsPerEpoch(plagueGame.currentEpoch()),
-                expectedInfections - doctorsToCure,
+                expectedInfections - doctorsToCure + cureFailedAttempts,
                 "The expected number of doctors is dead"
             );
 
@@ -368,10 +451,21 @@ contract GameTest is PlagueGameTest {
         address owner = doctors.ownerOf(_doctorId);
         potions.transferFrom(address(this), owner, lastPotionUsed);
 
+        (, uint64 reqCount,,) = coordinator.getSubscription(subscriptionId);
+
         vm.startPrank(owner);
         potions.approve(address(plagueGame), lastPotionUsed);
         plagueGame.drinkPotion(_doctorId, lastPotionUsed++);
         vm.stopPrank();
+
+        (, uint64 newReqCount,,) = coordinator.getSubscription(subscriptionId);
+        if (newReqCount > reqCount) {
+            _mockVRFResponse();
+
+            if (plagueGame.doctorStatus(_doctorId) == IPlagueGame.Status.Infected) {
+                ++cureFailedAttempts;
+            }
+        }
     }
 
     function _getRandomNumber(uint256 _randomnessSeed, uint256 _bound) private returns (uint256 randomNumber) {
@@ -397,9 +491,8 @@ contract GameTest is PlagueGameTest {
     }
 
     function _getInfectedDoctorsPerEpoch(uint256 _epoch) private view returns (uint256 infectedDoctors) {
-        uint256 numberEpochSet = infectionPercentagePerEpoch.length;
-        infectedDoctors = _epoch > numberEpochSet
-            ? infectionPercentagePerEpoch[numberEpochSet - 1]
-            : infectionPercentagePerEpoch[_epoch - 1];
+        uint256 numberEpochSet = infectionPercentages.length;
+        infectedDoctors =
+            _epoch > numberEpochSet ? infectionPercentages[numberEpochSet - 1] : infectionPercentages[_epoch - 1];
     }
 }

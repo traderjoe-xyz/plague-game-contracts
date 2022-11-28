@@ -3,6 +3,6 @@ src = 'src'
 out = 'out'
 libs = ['lib']
 
-gas_reports = ["PlagueGame"]
+gas_reports = ["PlagueGame","Apothecary"]
 
 # See more config options https://github.com/foundry-rs/foundry/tree/master/config

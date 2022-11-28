@@ -2,15 +2,18 @@
 pragma solidity ^0.8.13;
 
 import "openzeppelin/access/Ownable.sol";
+import "openzeppelin/security/ReentrancyGuard.sol";
+
 import "chainlink/VRFConsumerBaseV2.sol";
 import "chainlink/interfaces/VRFCoordinatorV2Interface.sol";
+
 import "./IApothecary.sol";
 import "./IPlagueGame.sol";
 
 /// @author Trader Joe
 /// @title Apothecary
 /// @notice Contract used to distribute potions to doctors
-contract Apothecary is IApothecary, Ownable, VRFConsumerBaseV2 {
+contract Apothecary is IApothecary, Ownable, ReentrancyGuard, VRFConsumerBaseV2 {
     /// @notice Contract address of the plague game
     IPlagueGame public immutable override plagueGame;
     /// @notice Contract address of the potion NFTs
@@ -104,7 +107,7 @@ contract Apothecary is IApothecary, Ownable, VRFConsumerBaseV2 {
 
     /// @notice Claims the intial potion for an array of doctors
     /// @param _doctorIDs Array of doctor IDs
-    function claimFirstPotions(uint256[] calldata _doctorIDs) external override {
+    function claimFirstPotions(uint256[] calldata _doctorIDs) external override nonReentrant {
         if (block.timestamp < claimStartTime) {
             revert ClaimNotStarted();
         }
@@ -131,7 +134,7 @@ contract Apothecary is IApothecary, Ownable, VRFConsumerBaseV2 {
     /// @notice Tries to brew a potion using 5 dead doctors
     /// @dev Can be used with several batches of 5 dead doctors
     /// @param _doctorIDs Array of doctor IDs
-    function makePotions(uint256[] calldata _doctorIDs) external override {
+    function makePotions(uint256[] calldata _doctorIDs) external override nonReentrant {
         if (!plagueGame.isGameStarted()) {
             revert GameNotStarted();
         }

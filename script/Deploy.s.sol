@@ -14,6 +14,7 @@ contract DeployScript is Script {
     uint256 playerNumberToEndGame = 10;
     uint256[] infectedDoctorsPerEpoch =
         [2_000, 2_000, 2_000, 3_000, 3_000, 3_000, 4_000, 4_000, 4_000, 5_000, 5_000, 5_000];
+    uint256[] cureSuccessRates = [10_000, 10_000, 10_000, 9_000, 8_000, 7_000, 6_000, 5_000, 4_000, 3_000, 2_000, 1_000];
     uint256[] difficultyPerEpoch = [0, 50, 50, 58, 58, 67, 67, 100, 100, 134, 134, 200, 200, 400, 400];
 
     // Fuji
@@ -54,6 +55,7 @@ contract DeployScript is Script {
             block.timestamp + 120,
             playerNumberToEndGame,
             infectedDoctorsPerEpoch,
+            cureSuccessRates,
             epochDuration,
             coordinator,
             subscriptionId,
