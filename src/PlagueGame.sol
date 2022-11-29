@@ -19,8 +19,9 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
     uint256 public immutable override playerNumberToEndGame;
     /// @notice Percentage of doctors that will be infected each epoch
     uint256[] public override infectionPercentages;
-    /// @notice Potions cure success rate, in basis points
-    uint256[] public override cureSuccessRates;
+    /// @notice Potions cure success rates, stored on 2 bytes each. 0xffff (i.e. 65_535) means 100% of success, 0x0000 means 0%
+    bytes private constant _cureSuccessRates =
+        "\xff\xff\xff\xff\xff\xff\xf4\x3c\xcd\xe7\xac\x2f\x8e\xdf\x75\xbc\x60\x72\x4e\x98\x3f\xc1\x33\x81\x29\x74\x21\x41\x1a\x98\x15\x35\x10\xde\x0d\x62\x0a\x99\x08\x5f\x06\xd8\x06\x7d\x06\x2c\x05\xe3\x05\xa2\x05\x66\x05\x30\x04\xfe\x04\xd1\x04\xa7\x04\x80\x04\x5c\x04\x3b\x04\x1c\x03\xff\x03\xe3\x03\xca\x03\xb1\x03\x9b\x03\x85\x03\x71\x03\x5e\x03\x4c\x03\x3a\x03\x2a\x03\x1a\x03\x0b\x02\xfd\x02\xef\x02\xe2\x02\xd6\x02\xca\x02\xbe\x02\xb3\x02\xa8\x02\x9e\x02\x94\x02\x8b\x02\x81\x02\x79\x02\x70\x02\x68\x02\x60\x02\x58\x02\x51\x02\x49\x02\x42\x02\x3c\x02\x35\x02\x2e\x02\x28\x02\x22\x02\x1c\x02\x17\x02\x11\x02\x0c\x02\x06\x02\x01\x01\xfc\x01\xf7\x01\xf2\x01\xee\x01\xe9\x01\xe5\x01\xe1\x01\xdc\x01\xd8\x01\xd4\x01\xd0\x01\xcc\x01\xc9\x01\xc5\x01\xc1\x01\xbe\x01\xba\x01\xb7\x01\xb4\x01\xb0\x01\xad\x01\xaa\x01\xa7\x01\xa4\x01\xa1\x01\x9e\x01\x9b\x01\x98\x01\x96\x01\x93\x01\x90\x01\x8e\x01\x8b\x01\x89\x01\x86\x01\x84\x01\x81\x01\x7f\x01\x7d\x01\x7a\x01\x78\x01\x76\x01\x74\x01\x72\x01\x70\x01\x6e\x01\x6c\x01\x6a\x01\x68\x01\x66\x01\x64\x01\x62\x01\x60\x01\x5e\x01\x5c\x01\x5b\x01\x59\x01\x57\x01\x55\x01\x54\x01\x52\x01\x50\x01\x4f\x01\x4d\x01\x4c\x01\x4a\x01\x49\x01\x47\x01\x46\x01\x44\x01\x43\x01\x41\x01\x40\x01\x3e\x01\x3d\x01\x3c\x01\x3a\x01\x39\x01\x38\x01\x36\x01\x35\x01\x34\x01\x32\x01\x31\x01\x30\x01\x2f\x01\x2e\x01\x2c\x01\x2b\x01\x2a\x01\x29\x01\x28\x01\x27\x01\x26\x01\x24\x01\x23\x01\x22\x01\x21\x01\x20\x01\x1f\x01\x1e\x01\x1d\x01\x1c\x01\x1b\x01\x1a\x01\x19\x01\x18\x01\x17\x01\x16\x01\x15\x01\x14\x01\x13\x01\x12\x01\x12\x01\x11\x01\x10\x01\x0f\x01\x0e\x01\x0d\x01\x0c\x01\x0b\x01\x0b\x01\x0a\x01\x09\x01\x08\x01\x07\x01\x06\x01\x06\x01\x05\x01\x04\x01\x03\x01\x02\x01\x02\x01\x01\x01\x00\x00\xff\x00\xff\x00\xfe\x00\xfd\x00\xfd\x00\xfc\x00\xfb\x00\xfa\x00\xfa\x00\xf9\x00\xf8\x00\xf8\x00\xf7\x00\xf6\x00\xf6\x00\xf5\x00\xf4\x00\xf4\x00\xf3\x00\xf2\x00\xf2\x00\xf1\x00\xf1\x00\xf0\x00\xef\x00\xef\x00\xee\x00\xed\x00\xed\x00\xec\x00\xec\x00\xeb\x00\xeb\x00\xea\x00\xe9\x00\xe9\x00\xe8\x00\xe8\x00\xe7\x00\xe7\x00\xe6\x00\xe5\x00\xe5\x00\xe4\x00\xe4\x00\xe3\x00\xe3\x00\xe2\x00\xe2\x00\xe1\x00\xe1\x00\xe0\x00\xe0\x00\xdf\x00\xdf\x00\xde\x00\xde\x00\xdd\x00\xdd\x00\xdc\x00\xdc\x00\xdb\x00\xdb\x00\xda\x00\xda\x00\xd9\x00\xd9\x00\xd9\x00\xd8\x00\xd8\x00\xd7\x00\xd7\x00\xd6\x00\xd6\x00\xd5\x00\xd5\x00\xd5\x00\xd4\x00\xd4\x00\xd3\x00\xd3\x00\xd2\x00\xd2\x00\xd2\x00\xd1\x00\xd1\x00\xd0\x00\xd0\x00\xd0\x00\xcf\x00\xcf\x00\xce\x00\xce\x00\xce\x00\xcd\x00\xcd\x00\xcc\x00\xcc\x00\xcc\x00\xcb\x00\xcb\x00\xcb\x00\xca\x00\xca\x00\xc9\x00\xc9\x00\xc9\x00\xc8\x00\xc8\x00\xc8\x00\xc7\x00\xc7\x00\xc7\x00\xc6\x00\xc6\x00\xc6\x00\xc5\x00\xc5\x00\xc4\x00\xc4\x00\xc4\x00\xc3\x00\xc3\x00\xc3\x00\xc2\x00\xc2\x00\xc2\x00\xc1\x00\xc1\x00\xc1\x00\xc1\x00\xc0\x00\xc0\x00\xc0\x00\xbf\x00\xbf\x00\xbf\x00\xbe\x00\xbe\x00\xbe\x00\xbd\x00\xbd\x00\xbd\x00\xbd\x00\xbc\x00\xbc\x00\xbc\x00\xbb\x00\xbb\x00\xbb\x00\xba\x00\xba\x00\xba\x00\xba\x00\xb9\x00\xb9\x00\xb9\x00\xb8\x00\xb8\x00\xb8\x00\xb8\x00\xb7\x00\xb7\x00\xb7\x00\xb7\x00\xb6\x00\xb6\x00\xb6\x00\xb5\x00\xb5\x00\xb5\x00\xb5\x00\xb4\x00\xb4\x00\xb4\x00\xb4\x00\xb3\x00\xb3\x00\xb3\x00\xb3\x00\xb2\x00\xb2\x00\xb2\x00\xb2\x00\xb1\x00\xb1\x00\xb1\x00\xb1\x00\xb0\x00\xb0\x00\xb0\x00\xb0\x00\xaf\x00\xaf\x00\xaf\x00\xaf\x00\xae\x00\xae\x00\xae\x00\xae\x00\xad\x00\xad\x00\xad\x00\xad\x00\xad\x00\xac\x00\xac\x00\xac\x00\xac\x00\xab\x00\xab\x00\xab\x00\xab\x00\xab\x00\xaa\x00\xaa\x00\xaa\x00\xaa\x00\xa9\x00\xa9\x00\xa9\x00\xa9\x00\xa9\x00\xa8\x00\xa8\x00\xa8\x00\xa8\x00\xa8\x00\xa7\x00\xa7\x00\xa7\x00\xa7\x00\xa7\x00\xa6\x00\xa6\x00\xa6\x00\xa6\x00\xa6\x00\xa5\x00\xa5\x00\xa5\x00\xa5\x00\xa5\x00\xa4\x00\xa4\x00\xa4\x00\xa4\x00\xa4\x00\xa3\x00\xa3\x00\xa3\x00\xa3\x00\xa3\x00\xa2\x00\xa2\x00\xa2\x00\xa2\x00\xa2\x00\xa1\x00\xa1\x00\xa1\x00\xa1\x00\xa1\x00\xa1\x00\xa0\x00\xa0\x00\xa0\x00\xa0\x00\xa0\x00\x9f\x00\x9f\x00\x9f\x00\x9f\x00\x9f\x00\x9f\x00\x9e\x00\x9e\x00\x9e\x00\x9e\x00\x9e\x00\x9e\x00\x9d\x00\x9d\x00\x9d\x00\x9d\x00\x9d\x00\x9d";
     /// @dev Number of doctors in the collection
     uint256 private immutable _doctorNumber;
 
@@ -109,6 +110,8 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
 
     /// @dev Basis point to calulate percentages
     uint256 private constant BASIS_POINT = 10_000;
+    /// @dev Basis point in bytes2 to calulate percentages
+    uint256 private constant BYTES2_BASIS_POINT = type(uint16).max;
 
     modifier gameOn() {
         if (isGameOver || !isGameStarted) {
@@ -121,7 +124,6 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
     /// @param _doctors Address of the doctor collection contract
     /// @param _potions Address of the potion collection contract
     /// @param _infectionPercentages Percentage of doctors that will  be infected each epoch
-    /// @param _cureSuccessRates Percentage of success when drinking a potion
     /// @param _playerNumberToEndGame Number of doctors still alive triggering the end of the game
     /// @param _epochDuration Duration of each epoch in seconds
     /// @param vrfCoordinator_ Address of the VRF coordinator
@@ -134,7 +136,6 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
         uint256 _startTime,
         uint256 _playerNumberToEndGame,
         uint256[] memory _infectionPercentages,
-        uint256[] memory _cureSuccessRates,
         uint256 _epochDuration,
         VRFCoordinatorV2Interface vrfCoordinator_,
         uint64 subscriptionId_,
@@ -159,12 +160,6 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
             }
         }
 
-        for (uint256 i = 0; i < _cureSuccessRates.length; i++) {
-            if (_cureSuccessRates[i] == 0 || _cureSuccessRates[i] > BASIS_POINT) {
-                revert InvalidSuccessRatePercentage();
-            }
-        }
-
         doctors = _doctors;
         _vrfCoordinator = vrfCoordinator_;
         _doctorNumber = _doctors.totalSupply();
@@ -177,7 +172,6 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
         startTime = _startTime;
         playerNumberToEndGame = _playerNumberToEndGame;
         infectionPercentages = _infectionPercentages;
-        cureSuccessRates = _cureSuccessRates;
         epochDuration = _epochDuration;
 
         // VRF setup
@@ -330,7 +324,7 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
 
         uint256 potionUsedByDoctor = potionUsed[_doctorId]++;
 
-        if (_getCureSuccessRate(potionUsedByDoctor) == BASIS_POINT) {
+        if (getCureSuccessRate(potionUsedByDoctor) == BYTES2_BASIS_POINT) {
             uint256 currentEpochCached = currentEpoch;
             curedDoctorsPerEpoch[currentEpochCached] += 1;
             _updateDoctorStatusStorage(_doctorId, Status.Healthy);
@@ -439,6 +433,21 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
         } else {
             return Status.Dead;
         }
+    }
+
+    /// @dev Fetches the right cure success rate for the amount of potion the doctor already drank
+    /// If we passed the last defined amount of potions, we use the last used rate
+    /// @param _potionsDrank Amount of potion the doctor already drank
+    /// @return cureSuccessRate Cure success rate for the considered epoch
+    function getCureSuccessRate(uint256 _potionsDrank) public pure returns (uint256 cureSuccessRate) {
+        if (_potionsDrank > _cureSuccessRates.length / 2 - 1) {
+            _potionsDrank = _cureSuccessRates.length / 2 - 1;
+        }
+
+        bytes2 firstByte = bytes2(_cureSuccessRates[_potionsDrank * 2]);
+        bytes2 secondByte = bytes2(_cureSuccessRates[_potionsDrank * 2 + 1]);
+
+        cureSuccessRate = uint256(uint16(firstByte | secondByte >> 8));
     }
 
     /// @dev Requests a random number from Chainlink VRF and starts a new epoch
@@ -581,17 +590,6 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
             : infectionPercentages[_epoch - 1];
     }
 
-    /// @dev Fetches the right cure success rate for the amount of potion the doctor already drank
-    /// If we passed the last defined amount of potions, we use the last used rate
-    /// @param _potionsDrank Amount of potion the doctor already drank
-    /// @return cureSuccessRate Cure success rate for the considered epoch
-    function _getCureSuccessRate(uint256 _potionsDrank) private view returns (uint256 cureSuccessRate) {
-        uint256 cureSuccessRatesLength = cureSuccessRates.length;
-        cureSuccessRate = _potionsDrank >= cureSuccessRatesLength
-            ? cureSuccessRates[cureSuccessRatesLength - 1]
-            : cureSuccessRates[_potionsDrank];
-    }
-
     /// @dev Loops through the healthy doctors and infects them until
     /// the number of infected doctors is equal to the requested number
     /// @dev Each VRF random number is used 8 times
@@ -641,11 +639,11 @@ contract PlagueGame is IPlagueGame, Ownable, VRFConsumerBaseV2 {
         if (requestType == VRFRequestType.Cure) {
             uint256 doctorID = _vrfRequestDoctor[_requestId];
             uint256 potionDrank = potionUsed[doctorID];
-            uint256 successRate = _getCureSuccessRate(potionDrank - 1);
+            uint256 successRate = getCureSuccessRate(potionDrank - 1);
 
             _vrfRequestPending[doctorID] = false;
 
-            if (uint256(keccak256(abi.encode(_randomWords[0]))) % BASIS_POINT < successRate) {
+            if (uint256(keccak256(abi.encode(_randomWords[0]))) % BYTES2_BASIS_POINT < successRate) {
                 uint256 epoch = currentEpoch;
                 curedDoctorsPerEpoch[epoch] += 1;
 

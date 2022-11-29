@@ -55,7 +55,6 @@ contract DeployScript is Script {
             block.timestamp + 120,
             playerNumberToEndGame,
             infectedDoctorsPerEpoch,
-            cureSuccessRates,
             epochDuration,
             coordinator,
             subscriptionId,

@@ -33,7 +33,7 @@ interface IPlagueGame {
     function startTime() external view returns (uint256);
     function playerNumberToEndGame() external view returns (uint256);
     function infectionPercentages(uint256 epoch) external view returns (uint256);
-    function cureSuccessRates(uint256 epoch) external view returns (uint256);
+    function getCureSuccessRate(uint256 potionDrank) external view returns (uint256);
 
     function currentEpoch() external view returns (uint256);
     function epochDuration() external view returns (uint256);
