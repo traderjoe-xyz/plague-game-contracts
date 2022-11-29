@@ -15,7 +15,7 @@ import "./IPlagueGame.sol";
 /// @notice Contract used to distribute potions to doctors
 contract Apothecary is IApothecary, Ownable, ReentrancyGuard, VRFConsumerBaseV2 {
     /// @notice Contract address of the plague game
-    IPlagueGame public immutable override plagueGame;
+    IPlagueGame public override plagueGame;
     /// @notice Contract address of the potion NFTs
     ILaunchpeg public immutable override potions;
     /// @notice Contract address of the plague doctor NFTs
@@ -89,8 +89,8 @@ contract Apothecary is IApothecary, Ownable, ReentrancyGuard, VRFConsumerBaseV2 
     ) VRFConsumerBaseV2(address(vrfCoordinator_)) {
         setClaimStartTime(_claimStartTime);
         setDifficulty(difficultyPerEpoch_);
+        setGameAddress(_plagueGame);
 
-        plagueGame = _plagueGame;
         potions = _potions;
         doctors = _doctors;
 
@@ -279,6 +279,20 @@ contract Apothecary is IApothecary, Ownable, ReentrancyGuard, VRFConsumerBaseV2 
         _difficultyPerEpoch = difficultyPerEpoch_;
 
         emit DifficultySet(difficultyPerEpoch_);
+    }
+
+    /// @notice Updates the game address
+    /// @dev Can only be called before the game start, both the previous contract and the new one are checked
+    /// @param _plagueGame New game contract
+    function setGameAddress(IPlagueGame _plagueGame) public override onlyOwner {
+        // On deployment plagueGame is not set yet so we only check the new contract
+        if (_plagueGame.isGameStarted() || (address(plagueGame) != address(0) && plagueGame.isGameStarted())) {
+            revert GameAlreadyStarted();
+        }
+
+        plagueGame = _plagueGame;
+
+        emit GameAddressSet(address(_plagueGame));
     }
 
     /// @notice Transfer potions from owner to the Apothecary contract

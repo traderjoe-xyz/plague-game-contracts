@@ -287,6 +287,24 @@ contract ApothecaryTest is PlagueGameTest {
         assertEq(potions.ownerOf(potionIds[1]), address(this), "ADMIN should be the owner of the potion ID");
     }
 
+    function testUpdateGameAddress() public {
+        // redeploy the game contract
+        _gameSetup();
+
+        apothecary.setGameAddress(plagueGame);
+
+        testClaimPotion();
+        // This test makes the game start
+        testMakePotion();
+
+        gameStartTime = block.timestamp + 1 days;
+        _gameSetup();
+
+        // Previous game started so we can't update
+        vm.expectRevert(GameAlreadyStarted.selector);
+        apothecary.setGameAddress(plagueGame);
+    }
+
     /**
      * Helper Functions *
      */

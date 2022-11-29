@@ -22,6 +22,7 @@ interface IApothecary {
 
     event ClaimStartTimeSet(uint256 timestamp);
     event DifficultySet(uint256[] difficulty);
+    event GameAddressSet(address plagueGame);
 
     // Contract addresses
     function plagueGame() external view returns (IPlagueGame);
@@ -52,6 +53,7 @@ interface IApothecary {
     // Admin
     function setClaimStartTime(uint256 newClaimStartTime) external;
     function setDifficulty(uint256[] calldata difficultyPerEpoch) external;
+    function setGameAddress(IPlagueGame newGameAddress) external;
     function addPotions(uint256[] calldata potionIds) external;
     function removePotions(uint256 amount) external;
 }
