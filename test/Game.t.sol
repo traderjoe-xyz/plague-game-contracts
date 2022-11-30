@@ -137,7 +137,7 @@ contract GameTest is PlagueGameTest {
         uint256 doctorID = 178;
         uint256 potionUsed;
 
-        while (cureSuccessRates[plagueGame.potionUsed(doctorID)] == 10_000) {
+        while (plagueGame.getCureSuccessRate(plagueGame.potionUsed(doctorID)) == 65_535) {
             _forceDoctorStatus(doctorID, IPlagueGame.Status.Infected);
 
             plagueGame.drinkPotion(doctorID, lastPotionUsed++);
@@ -172,8 +172,8 @@ contract GameTest is PlagueGameTest {
         // Testing failed attempt
         uint256[] memory randomNumber = new uint256[](1);
         while (
-            uint256(keccak256(abi.encode(randomNumber[0]))) % 10_000
-                < cureSuccessRates[plagueGame.potionUsed(doctorID) - 1]
+            uint256(keccak256(abi.encode(randomNumber[0]))) % 65_535
+                < plagueGame.getCureSuccessRate(plagueGame.potionUsed(doctorID) - 1)
         ) {
             randomNumber[0]++;
         }
@@ -189,8 +189,8 @@ contract GameTest is PlagueGameTest {
         assertEq(++potionUsed, plagueGame.potionUsed(doctorID), "Potion used should be incremented");
 
         while (
-            uint256(keccak256(abi.encode(randomNumber[0]))) % 10_000
-                >= cureSuccessRates[plagueGame.potionUsed(doctorID) - 1]
+            uint256(keccak256(abi.encode(randomNumber[0]))) % 65_535
+                >= plagueGame.getCureSuccessRate(plagueGame.potionUsed(doctorID) - 1)
         ) {
             randomNumber[0]++;
         }
@@ -305,7 +305,7 @@ contract GameTest is PlagueGameTest {
                 // All remaining doctors should in the healthy doctors set
                 uint256 numberOfWinners = plagueGame.healthyDoctorsNumber();
 
-                uint256 firstStorageSlotForSet = 20;
+                uint256 firstStorageSlotForSet = 19;
                 uint256 setSlot = uint256(vm.load(address(plagueGame), bytes32(firstStorageSlotForSet)));
 
                 for (uint256 j = 0; j < numberOfWinners; j++) {
@@ -410,6 +410,26 @@ contract GameTest is PlagueGameTest {
         assertGt(winners.length, 0, "There should at least 1 winner");
 
         assertLe(winners.length, playerNumberToEndGame, "There should no more than the expected amount of winners");
+    }
+
+    function testGetCureSuccessRate() public {
+        for (uint256 i = 0; i < 3; i++) {
+            assertEq(
+                plagueGame.getCureSuccessRate(i),
+                type(uint16).max,
+                "The success rate should be 100% for the first 3 potions"
+            );
+        }
+
+        uint256 previousRate = type(uint16).max;
+        for (uint256 i = 3; i < 600; i++) {
+            uint256 currentRate = plagueGame.getCureSuccessRate(i);
+
+            assertLe(currentRate, previousRate, "The success rate should decrease over time");
+            assertGe(currentRate * 100_000 / type(uint16).max, 239, "The success rate should tend to 0.239%");
+
+            previousRate = currentRate;
+        }
     }
 
     function _computeInfectedDoctors() private {

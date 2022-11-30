@@ -18,7 +18,6 @@ contract PlagueGameTest is Test {
     uint256 playerNumberToEndGame = 10;
     uint256[] infectionPercentages =
         [2_000, 2_000, 2_000, 3_000, 3_000, 3_000, 4_000, 4_000, 4_000, 5_000, 5_000, 5_000];
-    uint256[] cureSuccessRates = [10_000, 10_000, 10_000, 9_000, 8_000, 7_000, 6_000, 5_000, 4_000, 3_000, 2_000, 1_000];
     uint256 epochDuration = 1 days;
     uint256 prizePot = 100 ether;
     uint256 gameStartTime = block.timestamp + 24 hours;
@@ -68,7 +67,6 @@ contract PlagueGameTest is Test {
             gameStartTime,
             playerNumberToEndGame,
             infectionPercentages,
-            cureSuccessRates,
             epochDuration,
             coordinator,
             subscriptionId,
@@ -104,7 +102,7 @@ contract PlagueGameTest is Test {
     }
 
     function _forceDoctorStatus(uint256 _doctorID, IPlagueGame.Status _status) internal {
-        uint256 firstStorageSlotForStatus = 645;
+        uint256 firstStorageSlotForStatus = 644;
 
         uint256 storageSlot = firstStorageSlotForStatus + (_doctorID / 128);
         uint256 statusItem =
