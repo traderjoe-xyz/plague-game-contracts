@@ -53,19 +53,19 @@ interface IPlagueGameS2 {
     function isGameStarted() external view returns (bool);
     function prizePot() external view returns (uint256);
     function claimPrizeAllowed() external view returns (bool);
-    function claimPrize(uint256 _pcId) external;
+    function claimPrize(uint256 pcId) external;
     function hasClaimedPrize(uint256 pcId) external view returns (bool);
 
     /// admin
-    function initializeGame(uint256 _amount) external;
-    function updateGameStartTime(uint256 _newStartTime) external;
-    function allowPrizeWithdraw(bool _status) external;
+    function initializeGame(uint256 amount) external;
+    function updateGameStartTime(uint256 newStartTime) external;
+    function allowPrizeWithdraw(bool status) external;
     function startGame() external;
     function startEpoch() external;
     function endEpoch() external;
     function withdrawFunds() external;
 
     /// player
-    function doQuest(uint256 _pcId) external;
-    function rerollQuest(uint256 _pcId) external;
+    function doQuest(uint256 pcId) external;
+    function rerollQuest(uint256 pcId) external;
 }
